@@ -45,6 +45,8 @@ class Neuron {
       this._output = _sigmoid(sum);
     }
 
+    console.log(`${this.id} ${this.output}`);
+
     return this.output;
   }
 
@@ -138,72 +140,78 @@ class NN {
   }
 }
 
+//
+const test = new NN(1, 3, 1);
+const blop = test.activate([0.2]);
+console.log(blop);
+console.log(test);
+
 // something
-class Blob {
-  constructor() {
-    this.x = 0;
-    this.hp = 10;
-    this.nn = new NN(2, 4, 2);
-  }
+// class Blob {
+//   constructor() {
+//     this.x = 0;
+//     this.hp = 10;
+//     this.nn = new NN(2, 4, 2);
+//   }
 
-  think(leftFire, rightFire) {
-    const foo = (a) => Math.abs(a - this.x);
-    const distanceToFireR = foo(rightFire);
-    const distanceToFireL = foo(leftFire);
-    // think
-    const [moveLeft, moveRight] = this.nn.activate(this.x, distanceToFireL, distanceToFireR);
-    console.log(moveLeft, moveRight);
-    // move
-    if (moveLeft > 0.5) {
-      this.x -= 1;
-    }
-    if (moveRight > 0.5) {
-      this.x += 1;
-    }
+//   think(leftFire, rightFire) {
+//     const foo = (a) => Math.abs(a - this.x);
+//     const distanceToFireR = foo(rightFire);
+//     const distanceToFireL = foo(leftFire);
+//     // think
+//     const [moveLeft, moveRight] = this.nn.activate(this.x, distanceToFireL, distanceToFireR);
+//     console.log(moveLeft, moveRight);
+//     // move
+//     if (moveLeft > 0.5) {
+//       this.x -= 1;
+//     }
+//     if (moveRight > 0.5) {
+//       this.x += 1;
+//     }
 
-    // TODO
-    // death?
-    if (foo(rightFire) < 2 || foo(leftFire) < 2) {
-      this.hp = 0;
-    }
-  }
-}
+//     // TODO
+//     // death?
+//     if (foo(rightFire) < 2 || foo(leftFire) < 2) {
+//       this.hp = 0;
+//     }
+//   }
+// }
 
-// create blobs
-let blobs = [];
-let blobsToMake = 1000;
-for(let i = 0;i < blobsToMake;i++) {
-  blobs.push(new Blob());
-}
+// // create blobs
+// let blobs = [];
+// let blobsToMake = 1000;
+// for(let i = 0;i < blobsToMake;i++) {
+//   blobs.push(new Blob());
+// }
 
-// 20 steps
-for (let i = 0;i < 20;i++) {
-  const rightFire = 5;
-  const leftFire = -5;
-  blobs.forEach(b => {
-    if (b.hp > 0) {
-      b.think(leftFire, rightFire);
-    }
-  });
-}
+// // 20 steps
+// for (let i = 0;i < 20;i++) {
+//   const rightFire = 5;
+//   const leftFire = -5;
+//   blobs.forEach(b => {
+//     if (b.hp > 0) {
+//       b.think(leftFire, rightFire);
+//     }
+//   });
+// }
 
-// remove dead, pick top 3
-blobs = blobs.filter(b => b.hp > 0);
-console.log(`${blobsToMake - blobs.length} blobs died`);
-blobs = blobs.sort((a, b) => a.x > b.x ? 1 : b.x > a.x ? -1 : 0);
-blobs = blobs.slice(0, 3);
+// // remove dead, pick top 3
+// blobs = blobs.filter(b => b.hp > 0);
+// console.log(`${blobsToMake - blobs.length} blobs died`);
+// blobs = blobs.sort((a, b) => a.x > b.x ? 1 : b.x > a.x ? -1 : 0);
+// blobs = blobs.slice(0, 3);
 
-let step = 0;
-let num = setInterval(() => {
-  blobs[0].think(-5, 5);
-  step++;
-  if (step % 10 == 0) {
-    console.log("MUTATE");
-    blobs[0].nn.mutateNeurons();
-  }
-  if (blobs[0].x !== 0) {
-    console.log(`deviation at step ${step} after ${Math.floor(step / 10)} mutations`);
-    clearInterval(num);
-  }
-}, 10);
+// let step = 0;
+// let num = setInterval(() => {
+//   blobs[0].think(-5, 5);
+//   step++;
+//   if (step % 10 == 0) {
+//     console.log("MUTATE");
+//     blobs[0].nn.mutateNeurons();
+//   }
+//   if (blobs[0].x !== 0) {
+//     console.log(`deviation at step ${step} after ${Math.floor(step / 10)} mutations`);
+//     clearInterval(num);
+//   }
+// }, 10);
 
