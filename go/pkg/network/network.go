@@ -2,8 +2,8 @@ package network
 
 type Network struct {
 	Inputs  []*Neuron
-	Outputs []*Neuron
 	Hidden  []*Neuron // TODO upgrade this to support multiple layers
+	Outputs []*Neuron
 }
 
 func NewNetwork(numInputs int, numHidden int, numOutputs int) Network {
@@ -12,15 +12,15 @@ func NewNetwork(numInputs int, numHidden int, numOutputs int) Network {
 		Hidden:  make([]*Neuron, numHidden),
 		Outputs: make([]*Neuron, numOutputs),
 	}
-
+	staticStaretingBias := 0.5
 	for i := range n.Inputs {
-		n.Inputs[i] = NewNeuron()
+		n.Inputs[i] = NewNeuron(&staticStaretingBias)
 	}
 	for i := range n.Hidden {
-		n.Hidden[i] = NewNeuron()
+		n.Hidden[i] = NewNeuron(&staticStaretingBias)
 	}
 	for i := range n.Outputs {
-		n.Outputs[i] = NewNeuron()
+		n.Outputs[i] = NewNeuron(&staticStaretingBias)
 	}
 
 	return n
@@ -30,14 +30,14 @@ func (n *Network) DenseConnect() {
 	// connect input layer to hidden layer
 	for _, iNode := range n.Inputs {
 		for _, hNode := range n.Hidden {
-			iNode.Connect(hNode)
+			iNode.Connect(hNode, 0.5)
 		}
 	}
 
 	// connect hidden layer to output layer
 	for _, hNode := range n.Hidden {
 		for _, oNode := range n.Outputs {
-			hNode.Connect(oNode)
+			hNode.Connect(oNode, 0.5)
 		}
 	}
 }
@@ -46,11 +46,9 @@ func (n *Network) Activate(input []float64) []float64 {
 	for i := range n.Inputs {
 		n.Inputs[i].Activate(input[i])
 	}
-
 	for _, h := range n.Hidden {
 		h.Activate()
 	}
-
 	output := make([]float64, len(n.Outputs))
 	for i, o := range n.Outputs {
 		output[i] = o.Activate()

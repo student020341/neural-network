@@ -46,10 +46,17 @@ func (n *Neuron) MarshalJSON() ([]byte, error) {
 	return json.Marshal(asMap)
 }
 
-func NewNeuron() *Neuron {
+func NewNeuron(bias *float64) *Neuron {
+	var b float64
+	if bias != nil {
+		b = *bias
+	} else {
+		b = (rand.Float64() * 2) - 1
+	}
+
 	return &Neuron{
 		ID:       string(uuid.NewString()),
-		Bias:     (rand.Float64() * 2) - 1,
+		Bias:     b,
 		Incoming: make(map[string]Connection),
 		Outgoing: make(map[string]Connection),
 	}
@@ -77,7 +84,7 @@ func (n *Neuron) Activate(input ...float64) float64 {
 		n.Output2 = 1
 		n.Output = input[0]
 	} else if len(input) == 0 {
-		var sum float64 = 0
+		var sum float64 = n.Bias
 		for _, o := range n.Incoming {
 			sum += o.Target.Output * o.Weight
 		}
@@ -100,13 +107,19 @@ func (n *Neuron) Propagate(target *float64, rate *float64) float64 {
 	if target != nil {
 		sum = n.Output - *target
 	} else {
-		for _, o := range n.Outgoing {
-			o.Weight -= r * o.Target.Error * n.Output
-			if c, ok := o.Target.Incoming[n.ID]; ok {
-				c.Weight = o.Weight
-				c.Target.Incoming[n.ID] = c
+		for k := range n.Outgoing {
+			newWeight := n.Outgoing[k].Weight - r*n.Outgoing[k].Target.Error*n.Output
+			n.Outgoing[k] = Connection{
+				Target: n.Outgoing[k].Target,
+				Weight: newWeight,
 			}
-			sum += o.Target.Error * o.Weight
+
+			n.Outgoing[k].Target.Incoming[n.ID] = Connection{
+				Target: n,
+				Weight: newWeight,
+			}
+
+			sum += n.Outgoing[k].Target.Error * newWeight
 		}
 	}
 

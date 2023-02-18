@@ -4,7 +4,7 @@ const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 const _sigmoid = (x) => sigmoid(x) * (1 - sigmoid(x));
 
 class Neuron {
-  constructor(bias) {
+  constructor(bias = 0.5) {
     this.id = uuid();
     this.bias = bias != undefined ? bias : Math.random() * 2 - 1;
 
@@ -23,7 +23,29 @@ class Neuron {
     this.error = 0;
   }
 
-  connect(neuron, weight) {
+  toJSON() {
+    const inc = Object.keys(this.incoming.weights).reduce((acc, next) => Object.assign(
+      acc,
+      { [next]: this.incoming.weights[next] }
+    ), {});
+
+    const out = Object.keys(this.outgoing.weights).reduce((acc, next) => Object.assign(
+      acc,
+      { [next]: this.outgoing.weights[next] }
+    ), {});
+
+    return {
+      _output: this._output,
+      bias: this.bias,
+      error: this.error,
+      id: this.id,
+      incoming: inc,
+      outgoing: out,
+      output: this.output
+    };
+  }
+
+  connect(neuron, weight = 0.5) {
     this.outgoing.targets[neuron.id] = neuron;
     neuron.incoming.targets[this.id] = this;
     this.outgoing.weights[neuron.id] = neuron.incoming.weights[this.id] =
@@ -45,31 +67,42 @@ class Neuron {
       this._output = _sigmoid(sum);
     }
 
-    console.log(`${this.id} ${this.output}`);
-
     return this.output;
   }
 
   propagate(target, rate = 0.3) {
-    const sum =
-      target != undefined
-        ? this.output - target
-        : Object.keys(this.outgoing.targets).reduce((total, target) => {
-            this.outgoing.targets[target].incoming.weights[this.id] =
-              this.outgoing.weights[target] -=
-                rate * this.outgoing.targets[target].error * this.output;
-            return (
-              total +
-              this.outgoing.targets[target].error *
-                this.outgoing.weights[target]
-            );
-          }, 0);
+    // const sum =
+    //   target != undefined
+    //     ? this.output - target
+    //     : Object.keys(this.outgoing.targets).reduce((total, target) => {
+    //       this.outgoing.targets[target].incoming.weights[this.id] =
+    //         this.outgoing.weights[target] -=
+    //         rate * this.outgoing.targets[target].error * this.output;
+    //       return (
+    //         total +
+    //         this.outgoing.targets[target].error *
+    //         this.outgoing.weights[target]
+    //       );
+    //     }, 0);
+
+    let sum = 0;
+    if (target != undefined) {
+      sum = this.output - target;
+    } else {
+      sum = Object.keys(this.outgoing.targets).reduce((total, target) => {
+        const targetObjOut = this.outgoing.targets[target];
+        const newWeight = this.outgoing.weights[target] - rate * targetObjOut.error * this.output;
+        this.outgoing.weights[target] = newWeight;
+        targetObjOut.incoming.weights[this.id] = newWeight;
+        return total + targetObjOut.error * newWeight;
+      }, 0);
+    }
 
     this.error = sum * this._output;
     this.bias -= rate * this.error;
     return this.error;
   }
-  
+
   mutate(rate = 0.5) {
     if (Math.random() < rate) {
       const f = 1 + (Math.random() * 0.4 - 0.2);
@@ -84,7 +117,7 @@ class Neuron {
   }
 
   // TODO
-  clone(){}
+  clone() { }
 }
 
 class NN {
@@ -141,10 +174,37 @@ class NN {
 }
 
 //
-const test = new NN(1, 3, 1);
-const blop = test.activate([0.2]);
-console.log(blop);
-console.log(test);
+const test = new NN(2, 3, 1);
+const gtTrainingData = [];
+for (let i = 0; i < 1; i += 0.01) {
+  for (let z = 0; z < 1; z += 0.1) {
+    gtTrainingData.push({
+      inputs: [i, z],
+      outputs: [i > z ? 1 : 0]
+    });
+  }
+}
+
+// test.train([{
+//   inputs: [0.4, 0.1],
+//   outputs: [1]
+// }, {
+//   inputs: [0.1, 0.2],
+//   outputs: [0]
+// }, {
+//   inputs: [0.01, 0.005],
+//   outputs: [1]
+// }, {
+//   inputs: [0.6, 0.2],
+//   outputs: [0]
+// }], 100);
+// console.log(JSON.stringify(test, null, "  "));
+test.train(gtTrainingData, 2000);
+
+console.log(test.activate([0.2, 0.4]));
+console.log(test.activate([0.3, 0.1]));
+console.log(test.activate([0.4, 0.45]));
+console.log(test.activate([0.6, 0.3]));
 
 // something
 // class Blob {
