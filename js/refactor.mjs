@@ -232,9 +232,25 @@ class Network {
         });
 
         // activate hidden layers, following phases
+        for(let i = 0;i < this.phases.length;i++) {
+            this.phases[i].forEach(node_id => {
+                const synapses = this.getSynapseIndexByAEnd(node_id).map(s => this.synapses[s]);
+                const neurons = synapses.map(s => this.neurons[s.b]);
+                for(let ni = 0;ni < neurons.length;ni++) {
+                    const upstream_synapses = this.getSynapseIndexByBEnd(neurons[ni].id).map(s => this.synapses[s]);
+                    let upstream_totals = 0;
+                    upstream_synapses.forEach(s => {
+                        upstream_totals += s.weight * this.neurons[s.a].output;
+                    });
 
-        // activate outputs
-        let neurons = [];
+                    neurons[ni].output = sigmoid(upstream_totals);
+                    neurons[ni]._output = _sigmoid(upstream_totals);
+                }
+            });
+        }
+
+        // return outputs
+        return this.getOutputs().map(id => this.neurons[id].output);
     }
 }
 
@@ -257,13 +273,15 @@ for (let i = 20; i > 0; i--) {
 gt.computePhases();
 
 // activate
-gt.activate([0.2, 0.6]);
+console.log(gt.activate([0.2, 0.6]));
 
 //
-gt.phases.forEach((p, i) => {
-    console.log(i, p);
-});
-console.log("\n\n");
-gt.synapses.forEach((s, i) => {
-    console.log(i, s);
-});
+// gt.phases.forEach((p, i) => {
+//     console.log(i, p);
+// });
+// console.log("\n\n");
+// gt.synapses.forEach((s, i) => {
+//     console.log(i, s);
+// });
+
+console.log(gt);
