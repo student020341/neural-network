@@ -51,6 +51,10 @@ class Network {
          * sequence of nodes to activate
          */
         this.phases = [];
+        this.inOutCache = {};
+
+        this.inputs = [];
+        this.outputs = [];
 
         this._initializeNetwork(inputs, outputs);
     }
@@ -58,10 +62,16 @@ class Network {
     _initializeNetwork(num_in, num_out) {
         this.neurons = {};
         this.synapses = [];
+
+        // computed phases to store execution sequence
         this.phases = [];
+        // computed connections for fast lookups during execution
+        this.inOutCache = {};
 
         const inputs = Array.from(new Array(num_in)).map(() => new Neuron());
         const outputs = Array.from(new Array(num_out)).map(() => new Neuron());
+        this.inputs = inputs.map(i => i.id);
+        this.outputs = outputs.map(i => i.id);
 
         // set network neurons
         this.neurons = [...inputs, ...outputs].reduce((acc, next) => Object.assign(acc, { [next.id]: next }), {});
@@ -113,13 +123,13 @@ class Network {
     // returns true if new synapse is made
     connect(a, b, weight) {
         // prevent connection to inputs, because inputs are defined as not existing as any synapse b end
-        const inputs = this.getInputs();
+        const inputs = this.inputs;
         if (inputs.includes(b)) {
             return false;
         }
 
         // prevent connection to outputs, because outputs are defined as not existing as any synapse a end
-        const outputs = this.getOutputs();
+        const outputs = this.outputs;
         if (outputs.includes(a)) {
             return false;
         }
@@ -174,19 +184,12 @@ class Network {
         return n;
     }
 
-    // an input is a neuron that has outputs but no inputs
-    getInputs() {
-        return Object.keys(this.neurons).filter(id => !this.synapses.some(s => s.b == id));
-    }
-
-    //
-    getOutputs() {
-        return Object.keys(this.neurons).filter(id => !this.synapses.some(s => s.a == id));
-    }
-
     // compute and cache phases, the sequence to look up and activate neurons without repeated filter calls to the synapses array on every call
     computePhases() {
-        let phase = this.getInputs();
+        this.phases = [];
+        this.inOutCache = {};
+
+        let phase = this.inputs;
         let phases = [phase];
         while (phase.length > 0) {
             phase = Array.from(new Set(this.synapses.filter(s => phase.some(p => p == s.a)).map(s => s.b)));
@@ -211,6 +214,20 @@ class Network {
         }
 
         this.phases = phases;
+
+        // also compute cache thing :)
+        this.phases.forEach(phase => {
+            phase.forEach(id => {
+                const synapseIn = this.getSynapseIndexByBEnd(id);
+                const synapseOut = this.getSynapseIndexByAEnd(id);
+                
+                this.inOutCache[id] = {
+                    in: synapseIn,
+                    out: synapseOut
+                };
+            });
+        });
+
         return this.phases;
     }
 
@@ -219,7 +236,7 @@ class Network {
      * @param {number[]} inputs array of input values for the input nodes
      */
     activate(inputs) {
-        const input_nodes = this.getInputs();
+        const input_nodes = this.inputs;
         if (inputs.length != input_nodes.length) {
             console.log("input length does not match number of inputs");
             return;
@@ -234,11 +251,17 @@ class Network {
         // activate hidden layers, following phases, includes outputs
         for (let i = 0; i < this.phases.length; i++) {
             this.phases[i].forEach(node_id => {
-                const synapses = this.getSynapseIndexByAEnd(node_id).map(s => this.synapses[s]);
-                const neurons = synapses.map(s => this.neurons[s.b]);
+                // for each node in this phase, get downstream synapses
+                // const synapses = this.getSynapseIndexByAEnd(node_id).map(s => this.synapses[s]);
+                // get downstream neurons?
+                // const neurons = synapses.map(s => this.neurons[s.b]);
+                const neurons = this.inOutCache[node_id].out.map(si => this.neurons[ this.synapses[si].b ]);
                 for (let ni = 0; ni < neurons.length; ni++) {
-                    const upstream_synapses = this.getSynapseIndexByBEnd(neurons[ni].id).map(s => this.synapses[s]);
+                    // get all upstream neurons from downstream neuron
+                    // const upstream_synapses = this.getSynapseIndexByBEnd(neurons[ni].id).map(s => this.synapses[s]);
+                    const upstream_synapses = this.inOutCache[neurons[ni].id].in.map(si => this.synapses[si]);
                     let upstream_totals = 0;
+                    // sum
                     upstream_synapses.forEach(s => {
                         upstream_totals += s.weight * this.neurons[s.a].output;
                     });
@@ -250,12 +273,12 @@ class Network {
         }
 
         // return outputs
-        return this.getOutputs().map(id => this.neurons[id].output);
+        return this.outputs.map(id => this.neurons[id].output);
     }
 
     //
     propagate(targets, rate = 0.3) {
-        const outputs = this.getOutputs();
+        const outputs = this.outputs;
         if (outputs.length != targets.length) {
             console.log("number of targets does not match number of outputs");
             return;
@@ -271,13 +294,13 @@ class Network {
         // hidden + input, iterate phases backwards
         for(let i = this.phases.length-1; i >= 0; i--) {
             this.phases[i].forEach(id => {
-                const synapses = this.getSynapseIndexByBEnd(id).map(s => this.synapses[s]);
+                const synapses = this.inOutCache[id].in.map(si => this.synapses[si]);
                 const neurons = synapses.map(s => this.neurons[s.a]);
                 neurons.forEach(n => {
                     // get nodes downstream of n
                     // TODO cache this info on neurons, maybe during phase computation
                     let downstream_total = 0;
-                    const downstream_synapses = this.getSynapseIndexByAEnd(n.id).map(index => this.synapses[index]);
+                    const downstream_synapses = this.inOutCache[n.id].out.map(index => this.synapses[index]);
                     downstream_synapses.forEach(s => {
                         const targetDownstreamNode = this.neurons[s.b];
                         const newWeight = s.weight - rate * targetDownstreamNode.error * n.output;
@@ -329,13 +352,14 @@ class Network {
 const gt = new Network(2, 1);
 
 // create 3 hidden layers
-const col1 = Array.from(new Array(15)).map(() => new Neuron());
-const col2 = Array.from(new Array(15)).map(() => new Neuron());
-const col3 = Array.from(new Array(15)).map(() => new Neuron());
+const hiddenHeight = 10;
+const col1 = Array.from(new Array(hiddenHeight)).map(() => new Neuron());
+const col2 = Array.from(new Array(hiddenHeight)).map(() => new Neuron());
+const col3 = Array.from(new Array(hiddenHeight)).map(() => new Neuron());
 
-// get inputs and outputs here because they are figured out by initial synapse connections
-const inputs = gt.getInputs().map(id => gt.neurons[id]);
-const outputs = gt.getOutputs().map(id => gt.neurons[id]);
+// inputs and outputs
+const inputs = gt.inputs.map(id => gt.neurons[id]);
+const outputs = gt.outputs.map(id => gt.neurons[id]);
 
 // add neurons to network - after above step so new neurons are not mistaken for inputs or outputs
 [...col1, ...col2, ...col3].forEach(n => gt.neurons[n.id] = n);
@@ -359,27 +383,7 @@ for (let i = 0; i < 1; i += 0.01) {
   }
 }
 
-// const gtTrainingData = [
-//     {
-//         inputs: [1, 0],
-//         outputs: [1]
-//     },
-//     {
-//         inputs: [0, 1],
-//         outputs: [0]
-//     },
-//     {
-//         inputs: [0.3, 0.5],
-//         outputs: [0]
-//     },
-//     {
-//         inputs: [0.8, 0.1],
-//         outputs: [1]
-//     },
-// ];
+console.time("train");
 gt.train(gtTrainingData, 10);
+console.timeEnd("train");
 
-console.log(gt.activate([0.3, 0.6])); // 0
-console.log(gt.activate([0.75, 0.2])); // 1
-console.log(gt.activate([0.9, 0.3])); // 1
-console.log(gt.activate([0.23, 0.24])); // 0

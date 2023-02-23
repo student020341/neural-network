@@ -160,13 +160,17 @@ class NN {
 }
 
 //
-// const test = new NN(2, 3, 1);
-// const gtTrainingData = [];
-// for (let i = 0; i < 1; i += 0.01) {
-//   for (let z = 0; z < 1; z += 0.1) {
-//     gtTrainingData.push({
-//       inputs: [i, z],
-//       outputs: [i > z ? 1 : 0]
-//     });
-//   }
-// }
+const test = new NN(2, 3, 1);
+const gtTrainingData = [];
+for (let i = 0; i < 1; i += 0.01) {
+  for (let z = 0; z < 1; z += 0.1) {
+    gtTrainingData.push({
+      inputs: [i, z],
+      outputs: [i > z ? 1 : 0]
+    });
+  }
+}
+
+console.time("train");
+test.train(gtTrainingData, 100); // ~76 ms, refactor gets about 175ms for the same structure
+console.timeEnd("train");
