@@ -1,4 +1,4 @@
-import { v4 as uuid } from "uuid";
+// import { v4 as uuid } from "uuid";
 
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
 const _sigmoid = (x) => sigmoid(x) * (1 - sigmoid(x));
@@ -138,8 +138,8 @@ class Network {
         // TODO this needs to also check that infinite loops aren't created
         const all_neurons = Object.keys(this.neurons);
         const not_connected = [];
-        for(let i = 0;i < all_neurons.length-1;i++) {
-            for(let j = i+1;j < all_neurons.length; j++) {
+        for (let i = 0; i < all_neurons.length - 1; i++) {
+            for (let j = i + 1; j < all_neurons.length; j++) {
                 const n1 = all_neurons[i];
                 const n2 = all_neurons[j];
                 const existing_synapse = this.getSynapseIndex(n1, n2);
@@ -194,7 +194,7 @@ class Network {
             // console.log({phases});
             if (phases.some(p => {
                 if (p.length == phase.length) {
-                    for (let i = 0;i < p.length;i++) {
+                    for (let i = 0; i < p.length; i++) {
                         if (p[i] != phase[i]) {
                             return false;
                         }
@@ -224,19 +224,19 @@ class Network {
             console.log("input length does not match number of inputs");
             return;
         }
-        
+
         // activate inputs
         input_nodes.forEach((inode, i) => {
             this.neurons[inode]._output = 1;
             this.neurons[inode].output = inputs[i];
         });
 
-        // activate hidden layers, following phases
-        for(let i = 0;i < this.phases.length;i++) {
+        // activate hidden layers, following phases, includes outputs
+        for (let i = 0; i < this.phases.length; i++) {
             this.phases[i].forEach(node_id => {
                 const synapses = this.getSynapseIndexByAEnd(node_id).map(s => this.synapses[s]);
                 const neurons = synapses.map(s => this.neurons[s.b]);
-                for(let ni = 0;ni < neurons.length;ni++) {
+                for (let ni = 0; ni < neurons.length; ni++) {
                     const upstream_synapses = this.getSynapseIndexByBEnd(neurons[ni].id).map(s => this.synapses[s]);
                     let upstream_totals = 0;
                     upstream_synapses.forEach(s => {
@@ -252,36 +252,134 @@ class Network {
         // return outputs
         return this.getOutputs().map(id => this.neurons[id].output);
     }
+
+    //
+    propagate(targets, rate = 0.3) {
+        const outputs = this.getOutputs();
+        if (outputs.length != targets.length) {
+            console.log("number of targets does not match number of outputs");
+            return;
+        }
+
+        // outputs
+        outputs.forEach((id, i) => {
+            let sum = this.neurons[id].output - targets[i];
+            this.neurons[id].error = sum * this.neurons[id]._output;
+            this.neurons[id].bias -= rate * this.neurons[id].error;
+        });
+
+        // hidden + input, iterate phases backwards
+        for(let i = this.phases.length-1; i >= 0; i--) {
+            this.phases[i].forEach(id => {
+                const synapses = this.getSynapseIndexByBEnd(id).map(s => this.synapses[s]);
+                const neurons = synapses.map(s => this.neurons[s.a]);
+                neurons.forEach(n => {
+                    // get nodes downstream of n
+                    // TODO cache this info on neurons, maybe during phase computation
+                    let downstream_total = 0;
+                    const downstream_synapses = this.getSynapseIndexByAEnd(n.id).map(index => this.synapses[index]);
+                    downstream_synapses.forEach(s => {
+                        const targetDownstreamNode = this.neurons[s.b];
+                        const newWeight = s.weight - rate * targetDownstreamNode.error * n.output;
+                        s.weight = newWeight; // actual improvement in refactor
+                        downstream_total += newWeight * targetDownstreamNode.error;
+                    });
+
+                    n.error = downstream_total * n._output;
+                    n.bias -= rate * n.error;
+                });
+            });
+        }
+    }
+
+    //
+    train(data, iter){
+        while(iter > 0) {
+            data.forEach((d) => {
+                this.activate(d.inputs);
+                this.propagate(d.outputs);
+            });
+            iter--;
+        }
+    }
+
+    /**
+     * will add new neurons and connections following these steps in a loop:
+     * 1. pick a random synapse in the network and then place a node in the center
+     * 2. pick 2 random neurons that are not directly connected and make a new connection between them
+     * 
+     * @param {number} count 
+     */
+    randomNewNeuronsAndSynapses(count) {
+        for (let i = count; i > 0; i--) {
+            const randomSynapseIndex = Math.floor(Math.random() * this.synapses.length);
+            // console.log(`split synapse ${gt.synapses[randomSynapseIndex].a}->${gt.synapses[randomSynapseIndex].b}`);
+            this.insertNeuron(randomSynapseIndex);
+
+            const not_connected = this.getNotConnected();
+            const random_candidate = Math.floor(Math.random() * not_connected.length);
+            const [pair] = not_connected.splice(random_candidate, 1);
+            // console.log(`connect ${pair[0]} to ${pair[1]}`);
+            this.connect(pair[0], pair[1]);
+        }
+    }
 }
 
+// testing and adhoc feature development :)
 const gt = new Network(2, 1);
 
-// randomly add new neurons to split synapses and also randomly add new connections
-for (let i = 20; i > 0; i--) {
-    const randomSynapseIndex = Math.floor(Math.random() * gt.synapses.length);
-    // console.log(`split synapse ${gt.synapses[randomSynapseIndex].a}->${gt.synapses[randomSynapseIndex].b}`);
-    gt.insertNeuron(randomSynapseIndex);
+// create 3 hidden layers
+const col1 = Array.from(new Array(15)).map(() => new Neuron());
+const col2 = Array.from(new Array(15)).map(() => new Neuron());
+const col3 = Array.from(new Array(15)).map(() => new Neuron());
 
-    const not_connected = gt.getNotConnected();
-    const random_candidate = Math.floor(Math.random() * not_connected.length);
-    const [pair] = not_connected.splice(random_candidate, 1);
-    // console.log(`connect ${pair[0]} to ${pair[1]}`);
-    gt.connect(pair[0], pair[1]);
-}
+// get inputs and outputs here because they are figured out by initial synapse connections
+const inputs = gt.getInputs().map(id => gt.neurons[id]);
+const outputs = gt.getOutputs().map(id => gt.neurons[id]);
 
-// recompute
+// add neurons to network - after above step so new neurons are not mistaken for inputs or outputs
+[...col1, ...col2, ...col3].forEach(n => gt.neurons[n.id] = n);
+
+// remove all existing synapses because this will be a dense network
+gt.synapses = [];
+gt.synapses.push(...gt.denseConnect(inputs, col1));
+gt.synapses.push(...gt.denseConnect(col1, col2));
+gt.synapses.push(...gt.denseConnect(col2, col3));
+gt.synapses.push(...gt.denseConnect(col3, outputs));
 gt.computePhases();
 
-// activate
-console.log(gt.activate([0.2, 0.6]));
+// train
+const gtTrainingData = [];
+for (let i = 0; i < 1; i += 0.01) {
+  for (let z = 0; z < 1; z += 0.1) {
+    gtTrainingData.push({
+      inputs: [i, z],
+      outputs: [i > z ? 1 : 0]
+    });
+  }
+}
 
-//
-// gt.phases.forEach((p, i) => {
-//     console.log(i, p);
-// });
-// console.log("\n\n");
-// gt.synapses.forEach((s, i) => {
-//     console.log(i, s);
-// });
+// const gtTrainingData = [
+//     {
+//         inputs: [1, 0],
+//         outputs: [1]
+//     },
+//     {
+//         inputs: [0, 1],
+//         outputs: [0]
+//     },
+//     {
+//         inputs: [0.3, 0.5],
+//         outputs: [0]
+//     },
+//     {
+//         inputs: [0.8, 0.1],
+//         outputs: [1]
+//     },
+// ];
+gt.train(gtTrainingData, 10);
 
-console.log(gt);
+console.log(gt.activate([0.3, 0.6])); // 0
+console.log(gt.activate([0.75, 0.2])); // 1
+console.log(gt.activate([0.9, 0.3])); // 1
+console.log(gt.activate([0.23, 0.24])); // 0
