@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "dev": "esbuild main.mjs --bundle --outfile=public/main.js --servedir=public --watch --serve"
-  },
-  "dependencies": {
-    "esbuild": "^0.18.13"
-  }
-}
