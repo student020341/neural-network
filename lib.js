@@ -1,4 +1,6 @@
 
+let resizeCallbacks = [];
+
 /**
  * 
  * @param {HTMLCanvasElement} c 
@@ -24,6 +26,8 @@ const canvasContext2D = canvas.getContext("2d");
 //
 window.addEventListener("resize", () => {
     resize_canvas(canvas);
+
+    resizeCallbacks.forEach(fn => fn(canvas));
 });
 resize_canvas(canvas);
 
