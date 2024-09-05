@@ -7,6 +7,7 @@ class Hopper {
         this.size = 40;
         this.bounds = bounds;
 
+        // track think time
         this.accMax = 0.1;
         this.acc = 0;
 
@@ -24,13 +25,13 @@ class Hopper {
         this.inputs = [
             0, // consideration of distance to ground
             0, // consideration of falling velocity
-            0, // consideration of idle time
+            0, // consideration of idle time (time without moving)
         ];
         this.outputs = [
             0, // extension of leg
         ];
 
-        this.shouldJump = false;
+        this.jumpValue = 0;
 
         this.brain = new Network([
             this.inputs.length,
@@ -47,7 +48,7 @@ class Hopper {
 
     think() {
         // consider distance to ground
-        const maxGroundDistanceConsideration = this.size * 2;
+        const maxGroundDistanceConsideration = this.size * 4;
         const distanceToGround = Math.abs(this.bounds.h - this.y);
         const normalizedDistanceToGround = clamp(distanceToGround / maxGroundDistanceConsideration, 0, 1);
         this.inputs[0] = normalizedDistanceToGround;
@@ -61,9 +62,11 @@ class Hopper {
         this.inputs[2] = normalizedIdleTime;
 
         // activate
-        const beforeExt = this.outputs[0];
+        const beforeExt = this.outputs[0]; // tracking before and after leg extension to measure a potential "jump"
         this.outputs = this.brain.activate(this.inputs);
-        this.shouldJump = this.outputs[0] > beforeExt; // leg has extended
+        if (this.outputs[0] > 0.5 && this.outputs[0] > beforeExt) {
+            this.jumpValue = this.outputs[0] - beforeExt;
+        }
     }
 
     // frame update
@@ -75,6 +78,7 @@ class Hopper {
             this.think();
         }
 
+        // give the frog a new neural network every 3 seconds
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
@@ -88,7 +92,7 @@ class Hopper {
         // leg extension for other calculations
         const legExt = this.outputs[0] * this.size * 2; // hopper leg is 2x body size
 
-        // ground logic
+        // ground/falling logic
         if (this.y + this.size + legExt > this.bounds.h) {
             // ground / grounded
             this.y = this.bounds.h - this.size - legExt;
@@ -102,14 +106,14 @@ class Hopper {
 
         if (Math.abs(this.yVel) < 0.1) {
             this.idle = clamp(this.idle + dt, 0, this.idleMax);
-            if (this.shouldJump) {
-                this.yVel = -this.yVelMax * this.outputs[0];
+            if (this.jumpValue > 0) {
+                this.yVel = -this.yVelMax * this.jumpValue;
             }
         } else {
             this.idle = 0;
         }
 
-        this.shouldJump = false;
+        this.jumpValue = 0;
     }
 
     /**
