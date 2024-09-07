@@ -11,6 +11,9 @@ resizeCallbacks.push((c) => hopper.onResize(c));
 const flower = new Flower(120, {w: canvas.width, h: canvas.height});
 resizeCallbacks.push((c) => flower.onResize(c));
 
+const fish = new Fish(100, 100, {w: canvas.width, h: canvas.height});
+resizeCallbacks.push((c) => fish.onResize(c));
+
 // functions
 //
 //
@@ -19,6 +22,7 @@ resizeCallbacks.push((c) => flower.onResize(c));
 const logic = (dt) => {
     hopper.act(dt);
     flower.act(dt);
+    fish.act(dt);
 }
 
 // render
@@ -29,6 +33,7 @@ const render = (_, cw, ch) => {
     // draw creatures
     hopper.draw(ctx);
     flower.draw(ctx);
+    fish.draw(ctx);
 };
 
 // start

@@ -32,6 +32,8 @@ class Flower {
             Math.max(this.inputs.length, this.outputs.length) + 1,
             this.outputs.length
         ]);
+
+        this.think();
     }
 
     onResize(canvas) {
