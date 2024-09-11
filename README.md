@@ -2,7 +2,7 @@ A simple neural network project
 
 A demonstration is live at https://student020341.github.io/neural-network/
 
-A more advanced demonstration is available at ?
+A more advanced demonstration is available at https://student020341.github.io/neural-network/swarm.html
 
 View main.js for an organization of the data (declarations, render functions, etc) and check out hopper.js, flower.js, or fish.js for the drawing and logic of each creature.
 The constructors detail what the inputs and outputs are.
@@ -31,3 +31,7 @@ The age of the fish is also visualized by the color fading. When that resets to 
 on the other creatures, but their brains are also on short scrambling timers. This can be observed by sudden changes in their outputs. The creatures' behaviors are limited in how
 interesting they can be since they are mostly considering factors that are static or affected by their own outputs. I may add a more complex creature in the future, possibly
 on its own page.
+
+# Swarm
+
+Still under development, but is currently creatures represented by green dots that are vaguely aware of resources in the environment represented by red dots
