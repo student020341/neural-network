@@ -2,6 +2,8 @@ A simple neural network project
 
 A demonstration is live at https://student020341.github.io/neural-network/
 
+A more advanced demonstration is available at ?
+
 View main.js for an organization of the data (declarations, render functions, etc) and check out hopper.js, flower.js, or fish.js for the drawing and logic of each creature.
 The constructors detail what the inputs and outputs are.
 

@@ -8,6 +8,10 @@ const box_intersect = (a, b) => !(
 
 const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 
+const uDistVector = (a, b) => ({ x: Math.abs(a.x - b.x), y: Math.abs(a.y - b.y) });
+
+const sDistVector = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+
 // ref: https://www.trysmudford.com/blog/linear-interpolation-functions/
 
 /**
