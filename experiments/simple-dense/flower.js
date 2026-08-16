@@ -37,7 +37,7 @@ class Flower {
     }
 
     onResize(canvas) {
-        this.bounds = { w: canvas.width, h: canvas.height };
+        this.bounds = { w: canvas.width || canvas.w, h: canvas.height || canvas.h };
         this.y = this.bounds.h;
     }
 

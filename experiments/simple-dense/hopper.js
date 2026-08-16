@@ -1,4 +1,3 @@
-
 // a thing that hops
 class Hopper {
     constructor(x, y, bounds) {
@@ -43,7 +42,7 @@ class Hopper {
     }
 
     onResize(canvas) {
-        this.bounds = { w: canvas.width, h: canvas.height };
+        this.bounds = { w: canvas.width || canvas.w, h: canvas.height || canvas.h };
     }
 
     think() {
@@ -86,7 +85,7 @@ class Hopper {
                 this.inputs.length,
                 Math.max(this.inputs.length, this.outputs.length) + 1,
                 this.outputs.length
-            ])
+            ]);
         }
 
         // leg extension for other calculations

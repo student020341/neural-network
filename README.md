@@ -1,37 +1,69 @@
-A simple neural network project
+# Neural Network Experiments
 
-A demonstration is live at https://student020341.github.io/neural-network/
+A zero-dependency neural network and artificial life simulation project written in vanilla JavaScript and HTML5 Canvas.
 
-A more advanced demonstration is available at https://student020341.github.io/neural-network/swarm.html
+**Live Demos**:
+- **Main Hub**: [https://student020341.github.io/neural-network/](https://student020341.github.io/neural-network/)
+- **Simple Dense Creatures**: [https://student020341.github.io/neural-network/experiments/simple-dense/](https://student020341.github.io/neural-network/experiments/simple-dense/)
 
-View main.js for an organization of the data (declarations, render functions, etc) and check out hopper.js, flower.js, or fish.js for the drawing and logic of each creature.
-The constructors detail what the inputs and outputs are.
+---
 
-# Hopper brain details
-- input 0 (top bar) is considering the current distance to the ground
-- input 1 (second bar) is considering the current fall velocity
-- input 2 (third bar) is considering the time spent not doing anything (small movements may make this appear to jitter)
-- output 0 (bottom bar) is controlling extension of the "legs" and the creature will "hop" if there is a big difference in that value between think frames
+## Project Structure
 
+```text
+├── index.html                  # Main experiments hub / landing page
+├── utils.js                    # Math, vector helpers, interpolation & collision utilities
+├── lib.js                      # High-DPI canvas setup, virtual world scaling & zero-allocation game loop
+├── network.js                  # Engine entry point & backwards-compatibility bridge
+├── networks/
+│   ├── dense_network.js        # Optimized layered MLP with Leaky ReLU & Fast Sigmoid
+│   └── sparse_network.js       # Topology-evolving sparse network with recurrent memory loops
+└── experiments/
+    ├── simple-dense/           # Multi-creature simulation (Hopper, Flower, Fish)
+    │   ├── index.html
+    │   ├── hopper.js
+    │   ├── flower.js
+    │   ├── fish.js
+    │   └── main.js
+    └── swarm/                  # Multi-agent resource foraging simulation
+        ├── index.html
+        └── swarm.js
+```
 
-# Flower brain details
-- input 0 (left bar) distance to the star
-- output 0 (right bar) grow or shrink
+---
 
+## Experiments
 
-# Fish brain details
-- input 0 (bottom fin) considers closeness to whatever wall is in front of it (hsl green to red), the distance it can consider is visualized with a grey sight line
-- input 1 (top fin) considers how close the fish is to the ceiling of its bounds
-- output 0 (fish direction) facing right if this value is >= 0.5 otherwise facing left
-- output 1 (forward velocity) forward fish motion, this value is multiplied by the max fish speed
-- output 2 (upward velocity) if the fish gives >= 0.5 on this output it will swim up, otherwise it will sink. Upward swim visualized by bubbles below fish
+### 1. Simple Dense Creatures (`experiments/simple-dense/`)
+Simulates three distinct biological organisms with on-canvas neural state telemetry:
 
+#### Hopper
+* **Input 0** (top bar): Distance to the ground.
+* **Input 1** (second bar): Current fall/jump velocity.
+* **Input 2** (third bar): Idle time without moving.
+* **Output 0** (bottom bar): Leg extension. Hops are triggered when there is a rapid positive delta change in leg extension.
 
-The age of the fish is also visualized by the color fading. When that resets to a deep blue, the neural network is scrambled, and the behavior may change. This is not visualized
-on the other creatures, but their brains are also on short scrambling timers. This can be observed by sudden changes in their outputs. The creatures' behaviors are limited in how
-interesting they can be since they are mostly considering factors that are static or affected by their own outputs. I may add a more complex creature in the future, possibly
-on its own page.
+#### Flower
+* **Input 0** (left bar): Distance to the star.
+* **Output 0** (right bar): Growth rate (grow if $> 0.55$, shrink if $< 0.45$).
 
-# Swarm
+#### Fish
+* **Input 0** (bottom fin): Distance to the wall ahead (visualized by sight line and HSL fin color).
+* **Input 1** (top fin): Distance to the ceiling.
+* **Output 0**: Facing direction ($\ge 0.5$ right, $< 0.5$ left).
+* **Output 1**: Forward propulsion velocity scalar.
+* **Output 2**: Upward swimming thrust (fires bubble emissions when active; sinks otherwise).
 
-Still under development, but is currently creatures represented by green dots that are vaguely aware of resources in the environment represented by red dots
+---
+
+## Neural Network Architectures
+
+### `DenseNetwork` (`networks/dense_network.js`)
+* Contiguous `Float32Array` buffers with zero heap allocations during `activate()`.
+* Non-saturating **Leaky ReLU** for hidden layers and **Fast Algebraic Sigmoid** for bounded $[0, 1]$ output activations.
+* High-speed `clone()` via raw buffer copies (`memcpy`) and in-place `mutate()`.
+
+### `SparseNetwork` (`networks/sparse_network.js`)
+* Flat-graph sparse network supporting arbitrary node connectivity.
+* **Reflex Skip-Connections**: Sensors can connect directly to actuators for instantaneous reflexes.
+* **Recurrent Memory Loops**: Retains temporal state buffers (`previousValues`) across ticks to support short-term memory echoes, latch switches, and oscillating biological clocks (CPGs).

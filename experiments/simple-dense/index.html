@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Simple Dense Creatures</title>
+        <style>
+            body {
+                background: black;
+                color: white;
+                margin: 0;
+                overflow: hidden;
+                font-family: sans-serif;
+            }
+
+            canvas {
+                position: fixed;
+                left: 0;
+                right: 0;
+                top: 0;
+                bottom: 0;
+            }
+
+            .back-link {
+                position: fixed;
+                top: 12px;
+                left: 12px;
+                color: #888;
+                text-decoration: none;
+                font-size: 13px;
+                background: rgba(0, 0, 0, 0.6);
+                padding: 6px 12px;
+                border-radius: 4px;
+                border: 1px solid #333;
+                z-index: 10;
+                transition: color 0.2s, border-color 0.2s;
+            }
+
+            .back-link:hover {
+                color: #fff;
+                border-color: #666;
+            }
+        </style>
+    </head>
+    <body>
+        <a href="../../index.html" class="back-link">← All Experiments</a>
+        <canvas id="canvas"></canvas>
+        <script src="../../utils.js"></script>
+        <script src="../../lib.js"></script>
+        <script src="../../networks/dense_network.js"></script>
+        <script src="../../networks/sparse_network.js"></script>
+        <script src="../../network.js"></script>
+        <script src="hopper.js"></script>
+        <script src="flower.js"></script>
+        <script src="fish.js"></script>
+        <script src="main.js"></script>
+    </body>
+</html>
