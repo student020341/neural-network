@@ -1,149 +1,176 @@
-const makeid = ((id=0) => () => id++)();
-const sigmoid = (x) => 1 / (1 + Math.exp(-x));
-
-class Neuron {
-    /**
-     * 
-     * @param {number | undefined} bias optional bias
-     */
-    constructor(bias) {
-        this.id = makeid();
-        this.bias = bias == undefined ? Math.random() * 2 - 1 : bias;
-        this.output = 0;
-    }
-}
-
 class Network {
     /**
-     * 
-     * @param {number[]} layers [inputs, ...layers, outputs]
+     * @param {number[]} layers [inputs, ...hiddenLayers, outputs]
      */
     constructor(layers) {
+        this.layerSizes = Array.isArray(layers) ? [...layers] : [];
+        this.weights = [];
+        this.biases = [];
+        this.activations = [];
 
-        /** @type Object<string,Neuron> */
-        this.neurons = {};
-
-        // first layer is input, last layer is output, middle layers are hidden
-        /** @type string[][] */
-        this.layers = [];
-
-        // weights[a][b]->weight
-        /** @type Object<string, Object<string, number>> */
-        this.weights = {};
-
-        if (Array.isArray(layers) && layers.length > 1) {
-            this._initializeNetwork(layers);
+        if (this.layerSizes.length > 1) {
+            this._initializeNetwork(this.layerSizes);
         }
     }
 
     _initializeNetwork(layers) {
-        this.neurons = {};
-        layers.forEach((num, i) => {
-            let prev_layer = i > 0 ? this.layers[i - 1] : [];
-            let new_neurons = [];
-            for (let i = 0; i < num; i++) {
-                const n = new Neuron();
-                this.neurons[n.id] = n;
-                new_neurons.push(n.id);
+        this.layerSizes = [...layers];
+        this.weights = [];
+        this.biases = [];
+        this.activations = [];
 
-                // weights
-                prev_layer.forEach(pid => {
-                    if (!this.weights[pid]) {
-                        this.weights[pid] = {};
-                    }
-                    this.weights[pid][n.id] = Math.random() * 2 - 1;
-                });
+        // Preallocate activation buffers for each layer (prevents garbage collection during activate)
+        for (let i = 0; i < layers.length; i++) {
+            this.activations.push(new Float32Array(layers[i]));
+        }
+
+        // Initialize weights and biases between adjacent layers
+        for (let l = 0; l < layers.length - 1; l++) {
+            const inSize = layers[l];
+            const outSize = layers[l + 1];
+
+            // Flat 1D weights array of size (outSize * inSize)
+            const w = new Float32Array(outSize * inSize);
+            for (let i = 0; i < w.length; i++) {
+                w[i] = Math.random() * 2 - 1;
             }
-            this.layers.push(new_neurons);
-        });
+            this.weights.push(w);
+
+            // Biases for output neurons in layer l + 1
+            const b = new Float32Array(outSize);
+            for (let i = 0; i < b.length; i++) {
+                b[i] = Math.random() * 2 - 1;
+            }
+            this.biases.push(b);
+        }
     }
 
     /**
+     * Highly optimized forward feed calculation.
+     * Zero memory allocations / garbage collection during execution.
      * 
-     * @param {number[]} inputs array of input values for the input nodes
+     * @param {number[] | Float32Array} inputs array of input values for the input nodes
+     * @returns {Float32Array} output layer activations
      */
     activate(inputs) {
-        if (inputs.length != this.layers[0].length) {
-            console.log(`have ${this.layers[0].length} input neurons but got ${inputs.length} inputs`);
-            return;
+        const numLayers = this.layerSizes.length;
+        if (numLayers < 2) return null;
+
+        const inputSize = this.layerSizes[0];
+        if (inputs.length !== inputSize) {
+            console.warn(`Expected ${inputSize} input neurons but got ${inputs.length}`);
+            return null;
         }
 
-        for (let i = 0; i < this.layers.length; i++) {
-            this.layers[i].forEach((nid, i2) => {
-                if (i == 0) {
-                    // inputs
-                    this.neurons[nid].output = inputs[i2];
-                } else {
-                    let prev_layer = this.layers[i - 1];
-                    let upstream_total = 0;
-                    prev_layer.forEach(upid => {
-                        upstream_total += this.neurons[upid].output * this.weights[upid][nid];
-                    });
+        // Copy inputs into the first layer's activation buffer
+        const inputLayer = this.activations[0];
+        for (let i = 0; i < inputSize; i++) {
+            inputLayer[i] = inputs[i];
+        }
 
-                    this.neurons[nid].output = sigmoid(upstream_total);
+        // Forward feed through each layer
+        for (let l = 0; l < numLayers - 1; l++) {
+            const prevLayer = this.activations[l];
+            const nextLayer = this.activations[l + 1];
+            const inSize = this.layerSizes[l];
+            const outSize = this.layerSizes[l + 1];
+            const w = this.weights[l];
+            const b = this.biases[l];
+            const isOutputLayer = (l === numLayers - 2);
+
+            let weightIdx = 0;
+            for (let i = 0; i < outSize; i++) {
+                let total = b[i]; // Start with the neuron's bias
+                for (let j = 0; j < inSize; j++) {
+                    total += prevLayer[j] * w[weightIdx++];
                 }
-            });
-        }
-
-        // return outputs
-        return this.layers[this.layers.length - 1].map(id => this.neurons[id].output);
-    }
-
-    importJSON(jstr) {
-        let obj;
-        try {
-            obj = JSON.parse(jstr);
-        } catch (_) {
-            obj = {};
-        }
-
-        const { neurons, layers, weights } = obj;
-        if (neurons) {
-            this.neurons = neurons;
-        }
-        if (layers) {
-            this.layers = layers;
-        }
-        if (weights) {
-            this.weights = weights;
-        }
-    }
-
-    clone() {
-        const clone = new Network();
-        clone.neurons = JSON.parse(JSON.stringify(this.neurons));
-        clone.weights = JSON.parse(JSON.stringify(this.weights));
-        clone.layers = JSON.parse(JSON.stringify(this.layers));
-        return clone;
-    }
-
-    mutate(rate) {
-        // Loop through all the neurons in the network
-        for (let nid in this.neurons) {
-            // Get the neuron object
-            let neuron = this.neurons[nid];
-            // Generate a random number between 0 and 1
-            let r = Math.random();
-            // If the random number is less than the mutation rate
-            if (r < rate) {
-                // Mutate the bias of the neuron by adding a small random value
-                neuron.bias += Math.random() * 0.2 - 0.1;
+                
+                if (isOutputLayer) {
+                    // Fast Sigmoid: smooth algebraic S-curve in (0, 1), no Math.exp
+                    nextLayer[i] = 0.5 + 0.5 * (total / (1 + (total < 0 ? -total : total)));
+                } else {
+                    // Hidden layers: Leaky ReLU (fast & non-saturating)
+                    nextLayer[i] = total > 0 ? total : total * 0.01;
+                }
             }
         }
-        // Loop through all the weights in the network
-        for (let pid in this.weights) {
-            for (let cid in this.weights[pid]) {
-                // Get the weight value
-                let weight = this.weights[pid][cid];
-                // Generate a random number between 0 and 1
-                let r = Math.random();
-                // If the random number is less than the mutation rate
-                if (r < rate) {
-                    // Mutate the weight by adding a small random value
-                    weight += Math.random() * 0.2 - 0.1;
-                    this.weights[pid][cid] = weight;
+
+        // Return the final layer activations directly (supports [out0, out1] destructuring and index access)
+        return this.activations[numLayers - 1];
+    }
+
+    /**
+     * Fast deep copy of network parameters using raw memory copy.
+     * @returns {Network}
+     */
+    clone() {
+        const cloneNet = new Network(this.layerSizes);
+        for (let l = 0; l < this.weights.length; l++) {
+            cloneNet.weights[l].set(this.weights[l]);
+            cloneNet.biases[l].set(this.biases[l]);
+        }
+        return cloneNet;
+    }
+
+    /**
+     * Randomly mutate weights and biases in-place.
+     * @param {number} rate Probability of each weight/bias mutating [0, 1]
+     * @param {number} strength Max range of perturbation (default: 0.2)
+     */
+    mutate(rate, strength = 0.2) {
+        const halfStrength = strength / 2;
+
+        // Mutate weights
+        for (let l = 0; l < this.weights.length; l++) {
+            const w = this.weights[l];
+            for (let i = 0; i < w.length; i++) {
+                if (Math.random() < rate) {
+                    w[i] += Math.random() * strength - halfStrength;
                 }
+            }
+        }
+
+        // Mutate biases
+        for (let l = 0; l < this.biases.length; l++) {
+            const b = this.biases[l];
+            for (let i = 0; i < b.length; i++) {
+                if (Math.random() < rate) {
+                    b[i] += Math.random() * strength - halfStrength;
+                }
+            }
+        }
+    }
+
+    /**
+     * Export network structure and weights as a serializable JSON object.
+     */
+    toJSON() {
+        return {
+            layerSizes: this.layerSizes,
+            weights: this.weights.map(w => Array.from(w)),
+            biases: this.biases.map(b => Array.from(b)),
+        };
+    }
+
+    /**
+     * Import JSON configuration into this network.
+     * @param {string | object} jsonStr
+     */
+    importJSON(jsonStr) {
+        let obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+        if (!obj || !obj.layerSizes) return;
+
+        this._initializeNetwork(obj.layerSizes);
+        if (obj.weights) {
+            for (let l = 0; l < obj.weights.length; l++) {
+                if (this.weights[l]) this.weights[l].set(obj.weights[l]);
+            }
+        }
+        if (obj.biases) {
+            for (let l = 0; l < obj.biases.length; l++) {
+                if (this.biases[l]) this.biases[l].set(obj.biases[l]);
             }
         }
     }
 }
+
