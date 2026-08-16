@@ -29,7 +29,7 @@ class Fish {
             0, // move up
         ];
 
-        this.brain = new Network([
+        this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
             this.outputs.length
@@ -71,7 +71,7 @@ class Fish {
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
-            this.brain = new Network([
+            this.brain = new DenseNetwork([
                 this.inputs.length,
                 Math.max(this.inputs.length, this.outputs.length) + 1,
                 this.outputs.length

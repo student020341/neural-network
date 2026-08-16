@@ -27,7 +27,7 @@ class Flower {
             0, // adjust size
         ];
 
-        this.brain = new Network([
+        this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
             this.outputs.length
@@ -68,7 +68,7 @@ class Flower {
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
-            this.brain = new Network([
+            this.brain = new DenseNetwork([
                 this.inputs.length,
                 Math.max(this.inputs.length, this.outputs.length) + 1,
                 this.outputs.length

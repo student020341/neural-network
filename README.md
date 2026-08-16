@@ -14,7 +14,6 @@ A zero-dependency neural network and artificial life simulation project written 
 ├── index.html                  # Main experiments hub / landing page
 ├── utils.js                    # Math, vector helpers, interpolation & collision utilities
 ├── lib.js                      # High-DPI canvas setup, virtual world scaling & zero-allocation game loop
-├── network.js                  # Engine entry point & backwards-compatibility bridge
 ├── networks/
 │   ├── dense_network.js        # Optimized layered MLP with Leaky ReLU & Fast Sigmoid
 │   └── sparse_network.js       # Topology-evolving sparse network with recurrent memory loops
