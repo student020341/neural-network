@@ -207,10 +207,12 @@ class Environment {
 /** @type CanvasRenderingContext2D */
 const ctx = canvasContext2D;
 
-const env = new Environment({ w: canvas.width, h: canvas.height });
+const bounds = getWorldBounds();
+
+const env = new Environment(bounds);
 resizeCallbacks.push((c) => env.onResize(c));
 
-const swarm = new Swarm({ w: canvas.width, h: canvas.height }, env);
+const swarm = new Swarm(bounds, env);
 resizeCallbacks.push((c) => swarm.onResize(c));
 
 // functions
@@ -243,4 +245,4 @@ const render = (_, cw, ch) => {
 
 // start
 
-loop([render, logic]);
+loop([logic, render]);

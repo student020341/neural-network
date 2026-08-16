@@ -5,13 +5,15 @@
 /** @type CanvasRenderingContext2D */
 const ctx = canvasContext2D;
 
-const hopper = new Hopper(10, 40, {w: canvas.width, h: canvas.height});
+const bounds = getWorldBounds();
+
+const hopper = new Hopper(10, 40, bounds);
 resizeCallbacks.push((c) => hopper.onResize(c));
 
-const flower = new Flower(120, {w: canvas.width, h: canvas.height});
+const flower = new Flower(120, bounds);
 resizeCallbacks.push((c) => flower.onResize(c));
 
-const fish = new Fish(100, 100, {w: canvas.width, h: canvas.height});
+const fish = new Fish(100, 100, bounds);
 resizeCallbacks.push((c) => fish.onResize(c));
 
 // functions
@@ -38,4 +40,4 @@ const render = (_, cw, ch) => {
 
 // start
 
-loop([render, logic]);
+loop([logic, render]);
