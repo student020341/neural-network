@@ -26,9 +26,12 @@ A zero-dependency neural network and artificial life simulation project written 
     │   ├── flower.js
     │   ├── fish.js
     │   └── main.js
-    └── swarm/                  # Multi-agent resource foraging simulation
+    ├── swarm/                  # Multi-agent resource foraging simulation
+    │   ├── index.html
+    │   └── swarm.js
+    └── visualizer-sandbox/     # Brain visualizer stress workbench & custom topology lab
         ├── index.html
-        └── swarm.js
+        └── sandbox.js
 ```
 
 ---

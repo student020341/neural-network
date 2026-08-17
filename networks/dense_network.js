@@ -7,6 +7,12 @@ class DenseNetwork {
      * @param {number[]} layers [inputs, ...hiddenLayers, outputs]
      */
     constructor(layers) {
+        if (layers && typeof layers === 'object' && !Array.isArray(layers)) {
+            this.name = layers.name || "";
+            this.inputLabels = layers.inputLabels || null;
+            this.outputLabels = layers.outputLabels || null;
+            layers = layers.layerSizes || layers.layers || [];
+        }
         this.layerSizes = Array.isArray(layers) ? [...layers] : [];
         this.weights = [];
         this.biases = [];

@@ -12,8 +12,16 @@ class SparseNetwork {
      * @param {number} [options.initialConnectivity=0.5] Chance of initial random links [0, 1]
      */
     constructor(numInputs, numOutputs, options = {}) {
-        this.numInputs = numInputs;
-        this.numOutputs = numOutputs;
+        if (numInputs && typeof numInputs === 'object') {
+            options = numInputs;
+            numOutputs = options.numOutputs;
+            this.name = options.name || "";
+            this.inputLabels = options.inputLabels || null;
+            this.outputLabels = options.outputLabels || null;
+            numInputs = options.numInputs;
+        }
+        this.numInputs = numInputs || 0;
+        this.numOutputs = numOutputs || 0;
         this.numHidden = options.initialHidden || 0;
         this.totalNodes = this.numInputs + this.numOutputs + this.numHidden;
 
@@ -98,17 +106,12 @@ class SparseNetwork {
     }
 
     /**
-     * Splice a connection by inserting a new hidden / memory node in the middle (NEAT style).
-     * Connection A -> B becomes A -> NewNode -> B.
+     * Add a new hidden node or splice a connection (NEAT style).
+     * @param {boolean} [splitConnection=false] If true and active connections exist, splits one
+     * @returns {number} The newly created node's index
      */
-    addNode() {
+    addNode(splitConnection = false) {
         const activeConns = this.connections.filter(c => c.enabled);
-        if (activeConns.length === 0) return;
-
-        // Pick a random active connection to split
-        const connToSplit = activeConns[Math.floor(Math.random() * activeConns.length)];
-        connToSplit.enabled = false;
-
         const newHiddenIdx = this.totalNodes;
         this.totalNodes++;
         this.numHidden++;
@@ -126,11 +129,18 @@ class SparseNetwork {
 
         this.biases[newHiddenIdx] = Math.random() * 2 - 1;
 
-        // In -> New (weight 1.0) and New -> Out (original weight)
-        this.connections.push({ src: connToSplit.src, tgt: newHiddenIdx, weight: 1.0, enabled: true });
-        this.connections.push({ src: newHiddenIdx, tgt: connToSplit.tgt, weight: connToSplit.weight, enabled: true });
+        if (splitConnection && activeConns.length > 0) {
+            // Pick a random active connection to split
+            const connToSplit = activeConns[Math.floor(Math.random() * activeConns.length)];
+            connToSplit.enabled = false;
+
+            // In -> New (weight 1.0) and New -> Out (original weight)
+            this.connections.push({ src: connToSplit.src, tgt: newHiddenIdx, weight: 1.0, enabled: true });
+            this.connections.push({ src: newHiddenIdx, tgt: connToSplit.tgt, weight: connToSplit.weight, enabled: true });
+        }
 
         this.compile();
+        return newHiddenIdx;
     }
 
     /**

@@ -37,14 +37,6 @@ class Fish {
         this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
-            8,
-            8,
-            3,
-            3,
-            3,
-            3,
-            3,
-            3,
             this.outputs.length
         ]);
         this.brain.name = "Fish";
