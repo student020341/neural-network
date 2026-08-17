@@ -218,7 +218,8 @@ resizeCallbacks.push((c) => env.onResize(c));
 const swarm = new Swarm(bounds, env);
 resizeCallbacks.push((c) => swarm.onResize(c));
 
-// Real-time Brain Visualizer
+// Real-time Brain Visualizer & Telemetry
+const fpsMeter = new FPSMeter({ position: 'top-left' });
 const visualizer = new BrainVisualizer({ width: 440, height: 280 });
 
 // Click an agent to inspect its brain

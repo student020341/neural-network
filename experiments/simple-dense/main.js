@@ -20,7 +20,8 @@ resizeCallbacks.push((c) => fish.onResize(c));
 //
 //
 
-// Real-time Multi-Brain Visualizer
+// Real-time Multi-Brain Visualizer & Performance Telemetry
+const fpsMeter = new FPSMeter({ position: 'bottom-right' });
 const visualizer = new BrainVisualizer({ width: 480, height: 320 });
 visualizer.track("Fish", fish, (f) => f.brain);
 visualizer.track("Hopper", hopper, (h) => h.brain);

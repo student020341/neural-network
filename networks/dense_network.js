@@ -56,6 +56,26 @@ class DenseNetwork {
     }
 
     /**
+     * Re-randomize all synaptic weights and neuron biases.
+     */
+    scramble() {
+        for (let l = 0; l < this.weights.length; l++) {
+            const w = this.weights[l];
+            for (let i = 0; i < w.length; i++) {
+                w[i] = Math.random() * 2 - 1;
+            }
+            const b = this.biases[l];
+            for (let i = 0; i < b.length; i++) {
+                b[i] = Math.random() * 2 - 1;
+            }
+        }
+    }
+
+    _initWeights() {
+        this.scramble();
+    }
+
+    /**
      * Highly optimized forward feed calculation.
      * Zero memory allocations / garbage collection during execution.
      * 

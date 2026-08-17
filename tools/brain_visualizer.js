@@ -137,13 +137,18 @@ class BrainVisualizer {
                 .brain-viz-slider-box {
                     display: flex;
                     align-items: center;
-                    gap: 4px;
+                    gap: 6px;
                     color: #8b949e;
                     font-size: 11px;
                 }
                 .brain-viz-slider-box input {
-                    width: 40px;
+                    width: 65px;
                     cursor: pointer;
+                }
+                .brain-viz-slider-val {
+                    font-variant-numeric: tabular-nums;
+                    color: #79c0ff;
+                    min-width: 26px;
                 }
                 .brain-viz-search-bar {
                     padding: 4px 10px;
@@ -269,9 +274,10 @@ class BrainVisualizer {
                         <option value="flow">Flow Hub</option>
                         <option value="io">I/O Endpoints</option>
                     </select>
-                    <div class="brain-viz-slider-box" title="Hide faint connections below threshold">
+                    <div class="brain-viz-slider-box" title="Hide faint connections below threshold (1% - 99%)">
                         <span>Filter:</span>
-                        <input type="range" id="brain-viz-thresh" min="0" max="0.5" step="0.05" value="0.05" />
+                        <input type="range" id="brain-viz-thresh" min="0.01" max="0.99" step="0.01" value="0.05" />
+                        <span class="brain-viz-slider-val" id="brain-viz-thresh-val">5%</span>
                     </div>
                     <button class="brain-viz-btn" id="brain-viz-popout" title="Pop Out Window">⧉</button>
                     <button class="brain-viz-btn" id="brain-viz-reset" title="Center / Frame View">⌖</button>
@@ -444,9 +450,15 @@ class BrainVisualizer {
             try { header.releasePointerCapture(e.pointerId); } catch (_) {}
         });
 
-        // Threshold slider
+        const threshVal = this.container.querySelector("#brain-viz-thresh-val");
+
+        // Threshold slider (1% - 99%)
         threshSlider.addEventListener("input", (e) => {
-            this.minWeightThreshold = parseFloat(e.target.value);
+            const val = parseFloat(e.target.value);
+            this.minWeightThreshold = val;
+            if (threshVal) {
+                threshVal.textContent = `${Math.round(val * 100)}%`;
+            }
         });
 
         // Pop-Out Window toggle
@@ -472,11 +484,26 @@ class BrainVisualizer {
             this.canvas.setPointerCapture(e.pointerId);
         });
 
+        this.mouseWorldX = null;
+        this.mouseWorldY = null;
+        this.hoveredNode = null;
+
         this.canvas.addEventListener("pointermove", (e) => {
             if (this.isDragging) {
                 this.panX = e.clientX - this.dragStartX;
                 this.panY = e.clientY - this.dragStartY;
             }
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            this.mouseWorldX = (mouseX - this.panX) / this.zoom;
+            this.mouseWorldY = (mouseY - this.panY) / this.zoom;
+        });
+
+        this.canvas.addEventListener("pointerleave", () => {
+            this.mouseWorldX = null;
+            this.mouseWorldY = null;
+            this.hoveredNode = null;
         });
 
         this.canvas.addEventListener("pointerup", (e) => {
@@ -840,13 +867,6 @@ class BrainVisualizer {
             return true;
         });
 
-        if (pruned) {
-            this._updateTitle();
-            this._recomputeFilterCache();
-        }
-
-        if (this.providers.length === 0) return;
-
         const cw = this.canvas.clientWidth;
         const ch = this.canvas.clientHeight;
         if (cw === 0 || ch === 0) return;
@@ -863,12 +883,29 @@ class BrainVisualizer {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, cw, ch);
 
+        if (this.providers.length === 0) {
+            ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, sans-serif";
+            ctx.fillStyle = "#484f58";
+            ctx.textAlign = "center";
+            ctx.fillText("🧠 No Active Brains Tracked", cw / 2, ch / 2 - 8);
+            ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+            ctx.fillStyle = "#30363d";
+            ctx.fillText("Select a preset or instantiate a brain in the builder", cw / 2, ch / 2 + 14);
+            ctx.restore();
+            return;
+        }
+
         // Apply Camera Pan & Zoom Transform
         ctx.translate(this.panX, this.panY);
         ctx.scale(this.zoom, this.zoom);
 
         let currentY = 0;
         const cardGapY = 24;
+
+        const viewLeft = -this.panX / this.zoom;
+        const viewRight = (cw - this.panX) / this.zoom;
+        const viewTop = -this.panY / this.zoom;
+        const viewBottom = (ch - this.panY) / this.zoom;
 
         for (let idx = 0; idx < this.providers.length; idx++) {
             const p = this.providers[idx];
@@ -884,11 +921,31 @@ class BrainVisualizer {
             // Compute dynamic card dimensions for this mode
             const layout = this._computeCardLayout(ctx, brain, mode);
 
+            // --- Whole-Card Viewport Frustum Culling ---
+            const cardTop = currentY;
+            const cardBottom = currentY + layout.height;
+            const cardLeft = 0;
+            const cardRight = layout.width;
+
+            if (cardBottom < viewTop || cardTop > viewBottom || cardRight < viewLeft || cardLeft > viewRight) {
+                currentY += layout.height + cardGapY;
+                continue; // Skip rendering completely when card is outside camera viewport!
+            }
+
             ctx.save();
             ctx.translate(0, currentY);
 
             // Draw Card Container
             this._drawCardBackground(ctx, p.label, layout.width, layout.height, mode);
+
+            const cardView = {
+                viewLeft: viewLeft,
+                viewRight: viewRight,
+                viewTop: viewTop - currentY,
+                viewBottom: viewBottom - currentY,
+                mouseX: this.mouseWorldX,
+                mouseY: this.mouseWorldY !== null ? this.mouseWorldY - currentY : null
+            };
 
             // Draw based on chosen View Mode
             if (mode === "eeg") {
@@ -900,9 +957,9 @@ class BrainVisualizer {
             } else {
                 // Full Connectome
                 if (brain instanceof DenseNetwork || brain.layerSizes) {
-                    this._drawDenseNetwork(ctx, brain, layout, filterData);
+                    this._drawDenseNetwork(ctx, brain, layout, filterData, cardView);
                 } else {
-                    this._drawSparseNetwork(ctx, brain, layout, filterData);
+                    this._drawSparseNetwork(ctx, brain, layout, filterData, cardView);
                 }
             }
 
@@ -1020,10 +1077,11 @@ class BrainVisualizer {
         ctx.stroke();
     }
 
-    _drawDenseNetwork(ctx, brain, layout, filterData) {
+    _drawDenseNetwork(ctx, brain, layout, filterData, cardView) {
         const layers = brain.layerSizes;
         if (!layers || layers.length < 2) return;
         const { leftMargin, colSpacing, rowSpacing, topPadding, maxNodesInCol } = layout;
+        const { viewLeft, viewRight, viewTop, viewBottom, mouseX, mouseY } = cardView || {};
 
         const nodePos = [];
         for (let l = 0; l < layers.length; l++) {
@@ -1035,12 +1093,85 @@ class BrainVisualizer {
             }
         }
 
-        // Draw connections
+        // Detect Hovered Node Spotlight & Build Connected Neighbor Set
+        let hoveredLayer = -1, hoveredIdx = -1;
+        const spotlightNodes = new Set();
+
+        if (mouseX !== null && mouseY !== null && mouseX !== undefined && mouseY !== undefined) {
+            for (let l = 0; l < layers.length; l++) {
+                const colX = nodePos[l][0].x;
+                if (Math.abs(mouseX - colX) < 18) {
+                    for (let i = 0; i < layers[l]; i++) {
+                        const pos = nodePos[l][i];
+                        if (Math.hypot(mouseX - pos.x, mouseY - pos.y) < 14) {
+                            hoveredLayer = l;
+                            hoveredIdx = i;
+                            break;
+                        }
+                    }
+                }
+                if (hoveredLayer >= 0) break;
+            }
+        }
+
+        if (hoveredLayer >= 0) {
+            spotlightNodes.add(`${hoveredLayer}_${hoveredIdx}`);
+            if (hoveredLayer > 0) {
+                for (let i = 0; i < layers[hoveredLayer - 1]; i++) {
+                    spotlightNodes.add(`${hoveredLayer - 1}_${i}`);
+                }
+            }
+            if (hoveredLayer < layers.length - 1) {
+                for (let o = 0; o < layers[hoveredLayer + 1]; o++) {
+                    spotlightNodes.add(`${hoveredLayer + 1}_${o}`);
+                }
+            }
+        }
+
+        // Temporal Wave Progress (2.2s pulse sweeping from left to right)
+        const sweepPeriod = 2200;
+        const sweepPhase = (performance.now() % sweepPeriod) / sweepPeriod;
+
+        // 10-Tier Style-Bucketed Batched Path Rendering
+        const BUCKETS = [
+            // Negative (Red)
+            { color: "rgba(248, 81, 73, 0.22)", width: 1.0 },  // 0: Neg Light
+            { color: "rgba(248, 81, 73, 0.55)", width: 1.8 },  // 1: Neg Med
+            { color: "rgba(248, 81, 73, 0.85)", width: 2.8 },  // 2: Neg Heavy
+            { color: "rgba(255, 95, 85, 1.00)", width: 3.8 },  // 3: Neg Ultra
+            // Positive (Green)
+            { color: "rgba(63, 185, 80, 0.22)", width: 1.0 },   // 4: Pos Light
+            { color: "rgba(63, 185, 80, 0.55)", width: 1.8 },   // 5: Pos Med
+            { color: "rgba(63, 185, 80, 0.85)", width: 2.8 },   // 6: Pos Heavy
+            { color: "rgba(80, 230, 100, 1.00)", width: 3.8 },  // 7: Pos Ultra
+            // Filtered Ghost Synapses
+            { color: "rgba(248, 81, 73, 0.04)", width: 1.0 },  // 8: Neg Ghost
+            { color: "rgba(63, 185, 80, 0.04)", width: 1.0 }   // 9: Pos Ghost
+        ];
+
+        const paths = Array.from({ length: 10 }, () => new Path2D());
+        const hasLines = new Uint8Array(10);
+
+        const activationsL = brain.activations;
+
         for (let l = 0; l < layers.length - 1; l++) {
+            const inX = nodePos[l][0].x;
+            const outX = nodePos[l + 1][0].x;
+
+            // Horizontal Layer Frustum Cull
+            if (cardView && (outX < viewLeft || inX > viewRight)) continue;
+
             const inCount = layers[l];
             const outCount = layers[l + 1];
             const w = brain.weights[l];
+            const srcActs = activationsL ? activationsL[l] : null;
             let wIdx = 0;
+
+            // Temporal wave proximity for layer l
+            const layerDepth = (layers.length > 1) ? (l / (layers.length - 1)) : 0;
+            let d = Math.abs(layerDepth - sweepPhase);
+            if (d > 0.5) d = 1.0 - d;
+            const waveBoost = Math.exp(-(d * d) / 0.015) * 0.45; // Traveling wavefront
 
             for (let o = 0; o < outCount; o++) {
                 const tgt = nodePos[l + 1][o];
@@ -1052,44 +1183,71 @@ class BrainVisualizer {
 
                     const connKey = `${l}_${i}->${l + 1}_${o}`;
                     const isFiltered = this.isFiltering && filterData && !filterData.activeConns.has(connKey);
+                    const isSpotlighted = (hoveredLayer >= 0) && ((l === hoveredLayer && i === hoveredIdx) || (l + 1 === hoveredLayer && o === hoveredIdx));
+                    const isGhosted = (hoveredLayer >= 0 && !isSpotlighted) || isFiltered;
 
-                    ctx.beginPath();
-                    ctx.moveTo(src.x, src.y);
-                    ctx.lineTo(tgt.x, tgt.y);
+                    let bucketIdx = 0;
+                    if (isGhosted) {
+                        bucketIdx = weight >= 0 ? 9 : 8;
+                    } else {
+                        const absW = Math.abs(weight);
+                        const srcAct = srcActs ? srcActs[i] : 0;
+                        const transmittedSignal = Math.abs(srcAct * weight);
 
-                    const isPositive = weight >= 0;
-                    const baseAlpha = Math.min(1, Math.max(0.15, Math.abs(weight)));
-                    const alpha = isFiltered ? 0.05 : baseAlpha;
+                        // Live Dynamic Intensity: Base weight + Live electrical transmission + spotlight/wave
+                        const effectiveW = (absW * 0.35) + (transmittedSignal * 0.85) + (isSpotlighted ? 0.5 : waveBoost * 0.35);
 
-                    ctx.strokeStyle = isPositive
-                        ? `rgba(63, 185, 80, ${alpha})`
-                        : `rgba(248, 81, 73, ${alpha})`;
-                    ctx.lineWidth = Math.max(1, Math.min(4, Math.abs(weight) * 2.2));
-                    ctx.stroke();
+                        let tier = 0;
+                        if (effectiveW >= 1.15) tier = 3;
+                        else if (effectiveW >= 0.68) tier = 2;
+                        else if (effectiveW >= 0.32) tier = 1;
+                        bucketIdx = (weight >= 0 ? 4 : 0) + tier;
+                    }
+
+                    paths[bucketIdx].moveTo(src.x, src.y);
+                    paths[bucketIdx].lineTo(tgt.x, tgt.y);
+                    hasLines[bucketIdx] = 1;
                 }
             }
         }
 
-        // Draw nodes
+        // Interleaved Draw Order: Ghost -> Light (Neg, Pos) -> Med (Neg, Pos) -> Heavy (Neg, Pos) -> Ultra (Neg, Pos)
+        const DRAW_ORDER = [8, 9, 0, 4, 1, 5, 2, 6, 3, 7];
+        for (const b of DRAW_ORDER) {
+            if (hasLines[b]) {
+                ctx.strokeStyle = BUCKETS[b].color;
+                ctx.lineWidth = BUCKETS[b].width;
+                ctx.stroke(paths[b]);
+            }
+        }
+
+        // Draw nodes with Frustum Culling
         for (let l = 0; l < layers.length; l++) {
+            const colX = nodePos[l][0].x;
+            if (cardView && (colX < viewLeft - 50 || colX > viewRight + 50)) continue;
+
             const isInput = l === 0;
             const isOutput = l === layers.length - 1;
             const activations = brain.activations[l];
 
             for (let i = 0; i < layers[l]; i++) {
                 const pos = nodePos[l][i];
+                if (cardView && (pos.y < viewTop - 20 || pos.y > viewBottom + 20)) continue;
+
                 const act = activations ? activations[i] : 0;
-                const isFiltered = this.isFiltering && filterData && !filterData.activeNodes.has(`${l}_${i}`);
+                const isFiltered = (this.isFiltering && filterData && !filterData.activeNodes.has(`${l}_${i}`)) ||
+                                   (hoveredLayer >= 0 && !spotlightNodes.has(`${l}_${i}`));
                 this._drawNode(ctx, pos.x, pos.y, act, isInput, isOutput, i, brain, isFiltered);
             }
         }
     }
 
-    _drawSparseNetwork(ctx, brain, layout, filterData) {
+    _drawSparseNetwork(ctx, brain, layout, filterData, cardView) {
         const numInputs = brain.numInputs;
         const numOutputs = brain.numOutputs;
         const totalNodes = brain.totalNodes;
         const { leftMargin, colSpacing, rowSpacing, topPadding, maxNodesInCol } = layout;
+        const { viewLeft, viewRight, viewTop, viewBottom, mouseX, mouseY } = cardView || {};
 
         const inX = leftMargin;
         const outX = leftMargin + (totalNodes > (numInputs + numOutputs) ? 2 : 1) * colSpacing;
@@ -1113,8 +1271,51 @@ class BrainVisualizer {
             nodePositions[idx] = { x: midX, y: hidStartY + i * rowSpacing, type: 'hidden' };
         }
 
-        // Draw connections
+        // Detect Hovered Node Spotlight & Connected Neighbor Set
+        let hoveredNodeIdx = -1;
+        const spotlightNodes = new Set();
+
+        if (mouseX !== null && mouseY !== null && mouseX !== undefined && mouseY !== undefined) {
+            for (let i = 0; i < totalNodes; i++) {
+                const pos = nodePositions[i];
+                if (pos && Math.hypot(mouseX - pos.x, mouseY - pos.y) < 14) {
+                    hoveredNodeIdx = i;
+                    break;
+                }
+            }
+        }
+
+        if (hoveredNodeIdx >= 0) {
+            spotlightNodes.add(hoveredNodeIdx);
+            const conns = brain.connections || [];
+            for (const c of conns) {
+                if (c.enabled) {
+                    if (c.src === hoveredNodeIdx) spotlightNodes.add(c.tgt);
+                    if (c.tgt === hoveredNodeIdx) spotlightNodes.add(c.src);
+                }
+            }
+        }
+
+        // 10-Tier Style-Bucketed Batched Path Rendering
+        const BUCKETS = [
+            { color: "rgba(248, 81, 73, 0.22)", width: 1.0 },
+            { color: "rgba(248, 81, 73, 0.55)", width: 1.8 },
+            { color: "rgba(248, 81, 73, 0.85)", width: 2.8 },
+            { color: "rgba(255, 95, 85, 1.00)", width: 3.8 },
+            { color: "rgba(63, 185, 80, 0.22)", width: 1.0 },
+            { color: "rgba(63, 185, 80, 0.55)", width: 1.8 },
+            { color: "rgba(63, 185, 80, 0.85)", width: 2.8 },
+            { color: "rgba(80, 230, 100, 1.00)", width: 3.8 },
+            { color: "rgba(248, 81, 73, 0.04)", width: 1.0 },
+            { color: "rgba(63, 185, 80, 0.04)", width: 1.0 }
+        ];
+
+        const paths = Array.from({ length: 10 }, () => new Path2D());
+        const hasLines = new Uint8Array(10);
+
         const connections = brain.connections || [];
+        const currentVals = brain.currentValues;
+
         for (const conn of connections) {
             if (!conn.enabled || Math.abs(conn.weight) < this.minWeightThreshold) continue;
 
@@ -1124,38 +1325,62 @@ class BrainVisualizer {
 
             const connKey = `${conn.src}->${conn.tgt}`;
             const isFiltered = this.isFiltering && filterData && !filterData.activeConns.has(connKey);
+            const isSpotlighted = (hoveredNodeIdx >= 0) && (conn.src === hoveredNodeIdx || conn.tgt === hoveredNodeIdx);
+            const isGhosted = (hoveredNodeIdx >= 0 && !isSpotlighted) || isFiltered;
 
-            const isPositive = conn.weight >= 0;
-            const baseAlpha = Math.min(1, Math.max(0.2, Math.abs(conn.weight)));
-            const alpha = isFiltered ? 0.05 : baseAlpha;
-
-            ctx.strokeStyle = isPositive
-                ? `rgba(63, 185, 80, ${alpha})`
-                : `rgba(248, 81, 73, ${alpha})`;
-            ctx.lineWidth = Math.max(1, Math.min(4, Math.abs(conn.weight) * 2.2));
-
-            ctx.beginPath();
-            if (conn.src === conn.tgt) {
-                ctx.arc(src.x, src.y - 12, 10, 0, Math.PI * 2);
-            } else if (conn.src >= conn.tgt) {
-                ctx.moveTo(src.x, src.y);
-                ctx.quadraticCurveTo((src.x + tgt.x) / 2, Math.max(src.y, tgt.y) + 24, tgt.x, tgt.y);
+            let bucketIdx = 0;
+            if (isGhosted) {
+                bucketIdx = conn.weight >= 0 ? 9 : 8;
             } else {
-                ctx.moveTo(src.x, src.y);
-                ctx.lineTo(tgt.x, tgt.y);
+                const absW = Math.abs(conn.weight);
+                const srcAct = currentVals ? (currentVals[conn.src] || 0) : 0;
+                const transmittedSignal = Math.abs(srcAct * conn.weight);
+
+                const effectiveW = (absW * 0.35) + (transmittedSignal * 0.85) + (isSpotlighted ? 0.5 : 0);
+                let tier = 0;
+                if (effectiveW >= 1.15) tier = 3;
+                else if (effectiveW >= 0.68) tier = 2;
+                else if (effectiveW >= 0.32) tier = 1;
+                bucketIdx = (conn.weight >= 0 ? 4 : 0) + tier;
             }
-            ctx.stroke();
+
+            const p = paths[bucketIdx];
+            hasLines[bucketIdx] = 1;
+
+            if (conn.src === conn.tgt) {
+                p.moveTo(src.x + 10, src.y - 12);
+                p.arc(src.x, src.y - 12, 10, 0, Math.PI * 2);
+            } else if (conn.src >= conn.tgt) {
+                p.moveTo(src.x, src.y);
+                p.quadraticCurveTo((src.x + tgt.x) / 2, Math.max(src.y, tgt.y) + 24, tgt.x, tgt.y);
+            } else {
+                p.moveTo(src.x, src.y);
+                p.lineTo(tgt.x, tgt.y);
+            }
         }
 
-        // Draw nodes
+        // Interleaved Draw Order: Ghost -> Light -> Med -> Heavy -> Ultra
+        const DRAW_ORDER = [8, 9, 0, 4, 1, 5, 2, 6, 3, 7];
+        for (const b of DRAW_ORDER) {
+            if (hasLines[b]) {
+                ctx.strokeStyle = BUCKETS[b].color;
+                ctx.lineWidth = BUCKETS[b].width;
+                ctx.stroke(paths[b]);
+            }
+        }
+
+        // Draw nodes with Frustum Culling
         for (let i = 0; i < totalNodes; i++) {
             const pos = nodePositions[i];
             if (!pos) continue;
 
+            if (cardView && (pos.x < viewLeft - 40 || pos.x > viewRight + 40 || pos.y < viewTop - 20 || pos.y > viewBottom + 20)) continue;
+
             const act = brain.currentValues ? brain.currentValues[i] : 0;
             const isInput = i < numInputs;
             const isOutput = i >= numInputs && i < numInputs + numOutputs;
-            const isFiltered = this.isFiltering && filterData && !filterData.activeNodes.has(i);
+            const isFiltered = (this.isFiltering && filterData && !filterData.activeNodes.has(i)) ||
+                               (hoveredNodeIdx >= 0 && !spotlightNodes.has(i));
 
             this._drawNode(ctx, pos.x, pos.y, act, isInput, isOutput, i, brain, isFiltered);
         }
@@ -1214,36 +1439,67 @@ class BrainVisualizer {
         ctx.lineWidth = 1;
         ctx.stroke();
 
+        // Clip strictly inside the top strip inner bounds
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(hudX + 1, topStripY + 1, hudW - 2, topStripH - 2);
+        ctx.clip();
+
         let meanArousal = 0;
 
         if (isDense) {
             const layers = brain.layerSizes || [];
             const numLayers = layers.length;
-            const sliceW = Math.max(2, hudW / Math.max(numLayers, 1));
 
             let totalSum = 0;
             let totalCount = 0;
 
-            for (let l = 0; l < numLayers; l++) {
-                const acts = brain.activations[l] || [];
-                const sum = acts.reduce((a, b) => a + b, 0);
-                const avg = acts.length > 0 ? (sum / acts.length) : 0;
-                totalSum += sum;
-                totalCount += acts.length;
+            if (numLayers <= hudW) {
+                // Slices are 1px or wider
+                const sliceW = (hudW - 2) / Math.max(numLayers, 1);
+                for (let l = 0; l < numLayers; l++) {
+                    const acts = brain.activations[l] || [];
+                    const sum = acts.reduce((a, b) => a + b, 0);
+                    const avg = acts.length > 0 ? (sum / acts.length) : 0;
+                    totalSum += sum;
+                    totalCount += acts.length;
 
-                const sx = hudX + l * sliceW;
-                const sw = Math.max(1, sliceW - (numLayers < 30 ? 1 : 0));
+                    const sx = hudX + 1 + l * sliceW;
+                    const sw = Math.max(1, sliceW - (numLayers < 24 ? 1 : 0));
 
-                ctx.fillStyle = this._getHeatColor(avg);
-                ctx.fillRect(sx + 1, topStripY + 1, sw, topStripH - 2);
+                    ctx.fillStyle = this._getHeatColor(avg);
+                    ctx.fillRect(sx, topStripY + 1, sw, topStripH - 2);
 
-                // Layer indicator dot
-                if (numLayers <= 12) {
-                    ctx.fillStyle = avg > 0.6 ? "#000" : "#fff";
-                    ctx.font = "8px sans-serif";
-                    ctx.textAlign = "center";
-                    const tag = l === 0 ? "In" : (l === numLayers - 1 ? "Out" : `L${l}`);
-                    ctx.fillText(tag, sx + sw / 2, topStripY + topStripH / 2 + 3);
+                    // Layer indicator tag
+                    if (numLayers <= 12) {
+                        ctx.fillStyle = avg > 0.6 ? "#000" : "#fff";
+                        ctx.font = "8px sans-serif";
+                        ctx.textAlign = "center";
+                        const tag = l === 0 ? "In" : (l === numLayers - 1 ? "Out" : `L${l}`);
+                        ctx.fillText(tag, sx + sw / 2, topStripY + topStripH / 2 + 3);
+                    }
+                }
+            } else {
+                // High density pixel binning (e.g. 500 layers in 200px)
+                const innerW = hudW - 2;
+                for (let px = 0; px < innerW; px++) {
+                    const startL = Math.floor((px / innerW) * numLayers);
+                    const endL = Math.min(numLayers, Math.floor(((px + 1) / innerW) * numLayers) + 1);
+
+                    let binSum = 0;
+                    let binCount = 0;
+                    for (let l = startL; l < endL; l++) {
+                        const acts = brain.activations[l] || [];
+                        for (let k = 0; k < acts.length; k++) {
+                            binSum += acts[k];
+                            binCount++;
+                            totalSum += acts[k];
+                            totalCount++;
+                        }
+                    }
+                    const avg = binCount > 0 ? (binSum / binCount) : 0;
+                    ctx.fillStyle = this._getHeatColor(avg);
+                    ctx.fillRect(hudX + 1 + px, topStripY + 1, 1, topStripH - 2);
                 }
             }
 
@@ -1251,30 +1507,53 @@ class BrainVisualizer {
         } else {
             // Sparse network: accurately slice across totalNodes (Inputs -> Outputs -> Hidden)
             const totalNodes = brain.totalNodes || (brain.numInputs + brain.numOutputs);
-            const sliceW = Math.max(2, hudW / Math.max(totalNodes, 1));
             let totalSum = 0;
 
-            for (let i = 0; i < totalNodes; i++) {
-                const act = brain.currentValues ? brain.currentValues[i] : 0;
-                totalSum += act;
-                const sx = hudX + i * sliceW;
-                const sw = Math.max(1, sliceW - (totalNodes < 30 ? 1 : 0));
+            if (totalNodes <= hudW) {
+                const sliceW = (hudW - 2) / Math.max(totalNodes, 1);
+                for (let i = 0; i < totalNodes; i++) {
+                    const act = brain.currentValues ? brain.currentValues[i] : 0;
+                    totalSum += act;
+                    const sx = hudX + 1 + i * sliceW;
+                    const sw = Math.max(1, sliceW - (totalNodes < 24 ? 1 : 0));
 
-                ctx.fillStyle = this._getHeatColor(act);
-                ctx.fillRect(sx + 1, topStripY + 1, sw, topStripH - 2);
+                    ctx.fillStyle = this._getHeatColor(act);
+                    ctx.fillRect(sx, topStripY + 1, sw, topStripH - 2);
 
-                if (totalNodes <= 12) {
-                    ctx.fillStyle = act > 0.6 ? "#000" : "#fff";
-                    ctx.font = "8px sans-serif";
-                    ctx.textAlign = "center";
-                    const nodeLabel = i < brain.numInputs
-                        ? `I${i}`
-                        : (i < brain.numInputs + brain.numOutputs ? `O${i - brain.numInputs}` : `H${i - (brain.numInputs + brain.numOutputs)}`);
-                    ctx.fillText(nodeLabel, sx + sw / 2, topStripY + topStripH / 2 + 3);
+                    if (totalNodes <= 12) {
+                        ctx.fillStyle = act > 0.6 ? "#000" : "#fff";
+                        ctx.font = "8px sans-serif";
+                        ctx.textAlign = "center";
+                        const nodeLabel = i < brain.numInputs
+                            ? `I${i}`
+                            : (i < brain.numInputs + brain.numOutputs ? `O${i - brain.numInputs}` : `H${i - (brain.numInputs + brain.numOutputs)}`);
+                        ctx.fillText(nodeLabel, sx + sw / 2, topStripY + topStripH / 2 + 3);
+                    }
+                }
+            } else {
+                // High density sparse binning
+                const innerW = hudW - 2;
+                for (let px = 0; px < innerW; px++) {
+                    const startN = Math.floor((px / innerW) * totalNodes);
+                    const endN = Math.min(totalNodes, Math.floor(((px + 1) / innerW) * totalNodes) + 1);
+
+                    let binSum = 0;
+                    let binCount = 0;
+                    for (let n = startN; n < endN; n++) {
+                        const act = brain.currentValues ? brain.currentValues[n] : 0;
+                        binSum += act;
+                        binCount++;
+                        totalSum += act;
+                    }
+                    const avg = binCount > 0 ? (binSum / binCount) : 0;
+                    ctx.fillStyle = this._getHeatColor(avg);
+                    ctx.fillRect(hudX + 1 + px, topStripY + 1, 1, topStripH - 2);
                 }
             }
             meanArousal = totalNodes > 0 ? (totalSum / totalNodes) : 0;
         }
+
+        ctx.restore();
 
         // --- Strip 2: Rolling Temporal Brainwave Waveform ---
         const botStripY = topStripY + topStripH + 20;

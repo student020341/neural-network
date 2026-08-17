@@ -160,11 +160,33 @@
             color: #8b949e;
             font-variant-numeric: tabular-nums;
         }
+        .back-link {
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 500;
+            background: #21262d;
+            border: 1px solid #30363d;
+            padding: 5px 10px;
+            border-radius: 6px;
+            transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .back-link:hover {
+            color: #f0f6fc;
+            border-color: #58a6ff;
+            background: #1c2128;
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1>🔬 Brain Visualizer Sandbox & Stress Workbench</h1>
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <a href="../../index.html" class="back-link">← All Experiments</a>
+            <h1>🔬 Brain Visualizer Sandbox & Stress Workbench</h1>
+        </div>
         <div style="display: flex; gap: 8px;">
             <button id="btn-scramble-all">🎲 Scramble Weights</button>
             <button class="btn-danger" id="btn-clear-all">🧹 Clear All</button>
@@ -182,6 +204,8 @@
                 <button id="preset-tiny-dense">🌱 Tiny Dense [3, 2]</button>
                 <button id="preset-standard-dense">🧠 Standard [4, 8, 3]</button>
                 <button id="preset-deep-dense">🌊 Deep Dense [5, 16, 16, 3]</button>
+                <button id="preset-mega-dense">🔥 Mega Dense (100 Layers)</button>
+                <button id="preset-ultra-deep">⚡ Ultra Deep (500 Layers)</button>
                 <button id="preset-wide-dense">📊 Wide Dense [8, 32, 4]</button>
                 <button id="preset-sparse-reflex">🧬 Sparse Direct [4, 2]</button>
                 <button id="preset-sparse-loop">↺ Sparse Recurrent Loop</button>
@@ -209,7 +233,10 @@
             </div>
             <div class="field-row" id="row-dense-layers">
                 <label>Layer Sizes:</label>
-                <input type="text" id="custom-layers" value="4, 8, 8, 2" placeholder="e.g. 4, 8, 8, 2" />
+                <input type="text" id="custom-layers" value="3, 1x500, 2" placeholder="e.g. 3, 1x500, 2 (supports NxM repeat)" />
+            </div>
+            <div style="font-size: 10px; color: #8b949e; margin-top: -6px; margin-left: 98px;">
+                💡 Tip: use repeat shorthand like <code>3, 1x500, 2</code> for 500 layers!
             </div>
             <div class="field-row" id="row-sparse-nodes" style="display: none;">
                 <label>In, Out, Hid:</label>
@@ -250,6 +277,7 @@
     <!-- Scripts -->
     <script src="../../networks/dense_network.js"></script>
     <script src="../../networks/sparse_network.js"></script>
+    <script src="../../tools/fps_meter.js"></script>
     <script src="../../tools/brain_visualizer.js"></script>
     <script src="sandbox.js"></script>
 </body>

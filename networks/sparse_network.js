@@ -264,6 +264,23 @@ class SparseNetwork {
     }
 
     /**
+     * Re-randomize all connection weights and biases.
+     */
+    scramble() {
+        for (const conn of this.connections) {
+            conn.weight = (Math.random() * 2 - 1) * 1.5;
+        }
+        for (let i = this.numInputs; i < this.totalNodes; i++) {
+            this.biases[i] = Math.random() * 2 - 1;
+        }
+        this.compile();
+    }
+
+    _initWeights() {
+        this.scramble();
+    }
+
+    /**
      * Deep copy of sparse network topology and memory state.
      * @returns {SparseNetwork}
      */

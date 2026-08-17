@@ -2,6 +2,7 @@
 
 const entities = [];
 const visualizer = new BrainVisualizer({ width: 540, height: 420 });
+const fpsMeter = new FPSMeter({ position: 'bottom-left' });
 
 let signalMode = "harmonic";
 let signalSpeed = 1.0;
@@ -31,12 +32,10 @@ function clearAllEntities() {
 
 function scrambleAll() {
     entities.forEach(e => {
-        if (e.brain instanceof DenseNetwork) {
+        if (e.brain && typeof e.brain.scramble === 'function') {
+            e.brain.scramble();
+        } else if (e.brain && typeof e.brain._initWeights === 'function') {
             e.brain._initWeights();
-        } else if (e.brain instanceof SparseNetwork) {
-            e.brain.connections.forEach(c => {
-                c.weight = (Math.random() * 2 - 1) * 1.5;
-            });
         }
     });
 }
@@ -74,6 +73,28 @@ function spawnDeepDense() {
         outputLabels: ["Thrust", "Rudder", "Attack"]
     });
     addEntity("🌊 Deep Cortex", brain);
+}
+
+function spawnMegaDense() {
+    clearAllEntities();
+    // 100 layers total
+    const layers = [3, ...Array(98).fill(1), 2];
+    const brain = new DenseNetwork({
+        name: "Mega 100-Layer Pipeline",
+        layerSizes: layers
+    });
+    addEntity("🔥 100-Layer Pipeline", brain);
+}
+
+function spawnUltraDeep() {
+    clearAllEntities();
+    // 500 layers total
+    const layers = [3, ...Array(498).fill(1), 2];
+    const brain = new DenseNetwork({
+        name: "Ultra 500-Layer Pipeline",
+        layerSizes: layers
+    });
+    addEntity("⚡ 500-Layer Pipeline", brain);
 }
 
 function spawnWideDense() {
@@ -334,11 +355,31 @@ function updateManualSliders() {
     });
 }
 
+// Helper to parse layer strings with repeat syntax (e.g. "3, 1x500, 2" or "4, 16x50, 2")
+function parseLayerString(raw) {
+    const tokens = raw.split(",").map(s => s.trim()).filter(Boolean);
+    const result = [];
+    for (const tok of tokens) {
+        const match = tok.match(/^(\d+)[xX](\d+)$/);
+        if (match) {
+            const nodeSize = parseInt(match[1]);
+            const count = Math.min(2000, parseInt(match[2]));
+            for (let i = 0; i < count; i++) result.push(nodeSize);
+        } else {
+            const n = parseInt(tok);
+            if (!isNaN(n) && n > 0) result.push(n);
+        }
+    }
+    return result;
+}
+
 // --- Event Listeners ---
 
 document.getElementById("preset-tiny-dense").addEventListener("click", spawnTinyDense);
 document.getElementById("preset-standard-dense").addEventListener("click", spawnStandardDense);
 document.getElementById("preset-deep-dense").addEventListener("click", spawnDeepDense);
+document.getElementById("preset-mega-dense").addEventListener("click", spawnMegaDense);
+document.getElementById("preset-ultra-deep").addEventListener("click", spawnUltraDeep);
 document.getElementById("preset-wide-dense").addEventListener("click", spawnWideDense);
 document.getElementById("preset-sparse-reflex").addEventListener("click", spawnSparseReflex);
 document.getElementById("preset-sparse-loop").addEventListener("click", spawnSparseLoop);
@@ -376,9 +417,9 @@ document.getElementById("btn-add-custom").addEventListener("click", () => {
 
     if (type === "dense") {
         const raw = document.getElementById("custom-layers").value;
-        const layers = raw.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
+        const layers = parseLayerString(raw);
         if (layers.length < 2) {
-            alert("Dense networks require at least 2 layers (e.g. 4, 8, 2)");
+            alert("Dense networks require at least 2 layers (e.g. 3, 1x500, 2)");
             return;
         }
         const brain = new DenseNetwork({
