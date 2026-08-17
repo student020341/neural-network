@@ -202,10 +202,10 @@ class SparseNetwork {
         }
 
         // 5. Activation functions:
-        // Hidden / Memory nodes: Leaky ReLU
+        // Hidden / Memory nodes: Fast Tanh [-1, 1]
         for (let i = this.numInputs + this.numOutputs; i < this.totalNodes; i++) {
             const v = this.currentValues[i];
-            this.currentValues[i] = v > 0 ? v : v * 0.01;
+            this.currentValues[i] = v / (1 + (v < 0 ? -v : v));
         }
 
         // Output nodes: Fast Sigmoid [0, 1]

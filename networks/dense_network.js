@@ -119,8 +119,8 @@ class DenseNetwork {
                     // Fast Sigmoid: smooth algebraic S-curve in (0, 1), no Math.exp
                     nextLayer[i] = 0.5 + 0.5 * (total / (1 + (total < 0 ? -total : total)));
                 } else {
-                    // Hidden layers: Leaky ReLU (fast & non-saturating)
-                    nextLayer[i] = total > 0 ? total : total * 0.01;
+                    // Hidden layers: Fast Tanh (smooth bounded [-1, 1], zero-allocation)
+                    nextLayer[i] = total / (1 + (total < 0 ? -total : total));
                 }
             }
         }

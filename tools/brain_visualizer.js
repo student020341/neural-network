@@ -1021,10 +1021,9 @@ class BrainVisualizer {
             width = Math.max(360, leftMargin + colSpacing + rightMargin);
             height = Math.max(140, topPadding + maxIONodes * rowSpacing + bottomPadding);
         } else if (mode === "eeg") {
-            const maxIONodes = Math.max(numInputs, numOutputs, 1);
             colSpacing = 165;
-            width = Math.max(460, leftMargin + 2 * colSpacing + rightMargin);
-            height = Math.max(190, topPadding + maxIONodes * rowSpacing + bottomPadding);
+            width = 560;
+            height = 195;
         } else if (mode === "flow") {
             const maxIONodes = Math.max(numInputs, numOutputs, 1);
             colSpacing = 160;
@@ -1387,42 +1386,40 @@ class BrainVisualizer {
     }
 
     _drawEEGHeatmapMode(ctx, brain, layout, filterData) {
-        const { leftMargin, colSpacing, rowSpacing, topPadding } = layout;
+        const { topPadding, width: cardW } = layout;
         const isDense = brain instanceof DenseNetwork || Boolean(brain.layerSizes);
-        const inX = leftMargin;
-        const outX = leftMargin + 2 * colSpacing;
 
-        const numInputs = isDense ? brain.layerSizes[0] : brain.numInputs;
-        const numOutputs = isDense ? brain.layerSizes[brain.layerSizes.length - 1] : brain.numOutputs;
-        const maxIONodes = Math.max(numInputs, numOutputs, 1);
+        const numInputs = isDense ? (brain.layerSizes[0] || 0) : (brain.numInputs || 0);
+        const numOutputs = isDense ? (brain.layerSizes[brain.layerSizes.length - 1] || 0) : (brain.numOutputs || 0);
 
-        // Draw Inputs
-        const inStartY = topPadding + ((maxIONodes - numInputs) * rowSpacing) / 2 + rowSpacing / 2;
-        for (let i = 0; i < numInputs; i++) {
-            const y = inStartY + i * rowSpacing;
-            const act = isDense ? (brain.activations[0]?.[i] || 0) : (brain.currentValues?.[i] || 0);
-            const isFiltered = this.isFiltering && filterData && !filterData.activeNodes.has(isDense ? `0_${i}` : i);
-            this._drawNode(ctx, inX, y, act, true, false, i, brain, isFiltered);
-        }
+        const stripY = topPadding + 14;
+        const stripH = 96;
+        const stripW = 54;
 
-        // Draw Outputs
-        const outStartY = topPadding + ((maxIONodes - numOutputs) * rowSpacing) / 2 + rowSpacing / 2;
-        for (let i = 0; i < numOutputs; i++) {
-            const y = outStartY + i * rowSpacing;
-            const act = isDense
-                ? (brain.activations[brain.layerSizes.length - 1]?.[i] || 0)
-                : (brain.currentValues?.[numInputs + i] || 0);
-            const isFiltered = this.isFiltering && filterData && !filterData.activeNodes.has(isDense ? `${brain.layerSizes.length - 1}_${i}` : numInputs + i);
-            this._drawNode(ctx, outX, y, act, false, true, i, brain, isFiltered);
-        }
+        // 1. Left Vertical Input Array Spectrogram Strip
+        const inX = 14;
+        const getInputVal = isDense
+            ? (i) => brain.activations[0]?.[i] || 0
+            : (i) => brain.currentValues?.[i] || 0;
+        const getInputLabel = (i) => brain.inputLabels?.[i] || `I${i}`;
 
-        // Center Area: Dual-Strip EEG Spectrogram HUD
-        const centerMargin = 28;
-        const hudX = inX + centerMargin;
-        const hudW = (outX - inX) - (centerMargin * 2);
+        this._drawVerticalHeatmap(ctx, inX, stripY, stripW, stripH, "INPUTS", numInputs, getInputVal, getInputLabel);
+
+        // 2. Right Vertical Output Array Spectrogram Strip
+        const outX = cardW - 14 - stripW;
+        const getOutputVal = isDense
+            ? (i) => brain.activations[brain.layerSizes.length - 1]?.[i] || 0
+            : (i) => brain.currentValues?.[numInputs + i] || 0;
+        const getOutputLabel = (i) => brain.outputLabels?.[i] || `O${i}`;
+
+        this._drawVerticalHeatmap(ctx, outX, stripY, stripW, stripH, "OUTPUTS", numOutputs, getOutputVal, getOutputLabel);
+
+        // 3. Center Area: Dual-Strip EEG Spectrogram HUD
+        const hudX = inX + stripW + 16;
+        const hudW = outX - 16 - hudX;
 
         // --- Strip 1: Live Spatial Cortex Depth Heatmap ---
-        const topStripY = topPadding + 14;
+        const topStripY = stripY;
         const topStripH = 34;
 
         ctx.font = "bold 9px -apple-system, BlinkMacSystemFont, sans-serif";
@@ -1459,7 +1456,7 @@ class BrainVisualizer {
                 const sliceW = (hudW - 2) / Math.max(numLayers, 1);
                 for (let l = 0; l < numLayers; l++) {
                     const acts = brain.activations[l] || [];
-                    const sum = acts.reduce((a, b) => a + b, 0);
+                    const sum = acts.reduce((a, b) => a + Math.abs(b), 0);
                     const avg = acts.length > 0 ? (sum / acts.length) : 0;
                     totalSum += sum;
                     totalCount += acts.length;
@@ -1469,15 +1466,6 @@ class BrainVisualizer {
 
                     ctx.fillStyle = this._getHeatColor(avg);
                     ctx.fillRect(sx, topStripY + 1, sw, topStripH - 2);
-
-                    // Layer indicator tag
-                    if (numLayers <= 12) {
-                        ctx.fillStyle = avg > 0.6 ? "#000" : "#fff";
-                        ctx.font = "8px sans-serif";
-                        ctx.textAlign = "center";
-                        const tag = l === 0 ? "In" : (l === numLayers - 1 ? "Out" : `L${l}`);
-                        ctx.fillText(tag, sx + sw / 2, topStripY + topStripH / 2 + 3);
-                    }
                 }
             } else {
                 // High density pixel binning (e.g. 500 layers in 200px)
@@ -1491,9 +1479,10 @@ class BrainVisualizer {
                     for (let l = startL; l < endL; l++) {
                         const acts = brain.activations[l] || [];
                         for (let k = 0; k < acts.length; k++) {
-                            binSum += acts[k];
+                            const mag = Math.abs(acts[k]);
+                            binSum += mag;
                             binCount++;
-                            totalSum += acts[k];
+                            totalSum += mag;
                             totalCount++;
                         }
                     }
@@ -1512,23 +1501,14 @@ class BrainVisualizer {
             if (totalNodes <= hudW) {
                 const sliceW = (hudW - 2) / Math.max(totalNodes, 1);
                 for (let i = 0; i < totalNodes; i++) {
-                    const act = brain.currentValues ? brain.currentValues[i] : 0;
+                    const rawAct = brain.currentValues ? brain.currentValues[i] : 0;
+                    const act = Math.abs(rawAct);
                     totalSum += act;
                     const sx = hudX + 1 + i * sliceW;
                     const sw = Math.max(1, sliceW - (totalNodes < 24 ? 1 : 0));
 
                     ctx.fillStyle = this._getHeatColor(act);
                     ctx.fillRect(sx, topStripY + 1, sw, topStripH - 2);
-
-                    if (totalNodes <= 12) {
-                        ctx.fillStyle = act > 0.6 ? "#000" : "#fff";
-                        ctx.font = "8px sans-serif";
-                        ctx.textAlign = "center";
-                        const nodeLabel = i < brain.numInputs
-                            ? `I${i}`
-                            : (i < brain.numInputs + brain.numOutputs ? `O${i - brain.numInputs}` : `H${i - (brain.numInputs + brain.numOutputs)}`);
-                        ctx.fillText(nodeLabel, sx + sw / 2, topStripY + topStripH / 2 + 3);
-                    }
                 }
             } else {
                 // High density sparse binning
@@ -1540,7 +1520,7 @@ class BrainVisualizer {
                     let binSum = 0;
                     let binCount = 0;
                     for (let n = startN; n < endN; n++) {
-                        const act = brain.currentValues ? brain.currentValues[n] : 0;
+                        const act = brain.currentValues ? Math.abs(brain.currentValues[n]) : 0;
                         binSum += act;
                         binCount++;
                         totalSum += act;
@@ -1625,6 +1605,90 @@ class BrainVisualizer {
         ctx.fill();
 
         ctx.restore();
+    }
+
+    _drawVerticalHeatmap(ctx, x, y, width, height, title, count, getValueFn, getLabelFn) {
+        // 1. Header
+        ctx.font = "bold 9px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillStyle = "#8b949e";
+        ctx.textAlign = "left";
+        ctx.fillText(`${title} (${count})`, x, y - 4);
+
+        // 2. Outer container
+        ctx.beginPath();
+        ctx.roundRect(x, y, width, height, 4);
+        ctx.fillStyle = "#161b22";
+        ctx.fill();
+        ctx.strokeStyle = "#30363d";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        const barW = width - 2;
+        const innerH = height - 2;
+
+        // 3. Heatmap Bar Rendering (with high-density downsampling for arbitrary bounds)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x + 1, y + 1, barW, innerH);
+        ctx.clip();
+
+        let peakVal = 0;
+        let peakIdx = 0;
+        let totalSum = 0;
+
+        if (count <= 0) {
+            // Empty
+        } else if (count <= innerH) {
+            // Slices are 1px or taller
+            const sliceH = innerH / Math.max(count, 1);
+            for (let i = 0; i < count; i++) {
+                const val = Math.abs(getValueFn(i));
+                if (val > peakVal) {
+                    peakVal = val;
+                    peakIdx = i;
+                }
+                totalSum += val;
+
+                const sy = y + 1 + i * sliceH;
+                const sh = Math.max(1, sliceH - (count < 24 ? 1 : 0));
+
+                ctx.fillStyle = this._getHeatColor(val);
+                ctx.fillRect(x + 1, sy, barW, sh);
+            }
+        } else {
+            // High-density vertical pixel binning (e.g. 500, 10,000, 100,000+ channels)
+            for (let py = 0; py < innerH; py++) {
+                const startN = Math.floor((py / innerH) * count);
+                const endN = Math.min(count, Math.floor(((py + 1) / innerH) * count) + 1);
+
+                let binSum = 0;
+                let binCount = 0;
+                for (let n = startN; n < endN; n++) {
+                    const val = Math.abs(getValueFn(n));
+                    binSum += val;
+                    binCount++;
+                    totalSum += val;
+                    if (val > peakVal) {
+                        peakVal = val;
+                        peakIdx = n;
+                    }
+                }
+
+                const avg = binCount > 0 ? (binSum / binCount) : 0;
+                ctx.fillStyle = this._getHeatColor(avg);
+                ctx.fillRect(x + 1, y + 1 + py, barW, 1);
+            }
+        }
+
+        ctx.restore();
+
+        // 4. Peak Telemetry Subtext below box
+        ctx.font = "8px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillStyle = "#8b949e";
+        ctx.textAlign = "left";
+        ctx.fillText(`Pk:#${peakIdx}`, x, y + height + 10);
+        ctx.fillStyle = peakVal > 0.5 ? "#58a6ff" : "#6e7681";
+        ctx.fillText(`[${peakVal.toFixed(2)}]`, x + 30, y + height + 10);
     }
 
     _getHeatColor(ratio) {
@@ -1754,7 +1818,7 @@ class BrainVisualizer {
 
     _drawNode(ctx, x, y, activation, isInput, isOutput, index, brain, isFiltered) {
         const radius = 8;
-        const normAct = Math.max(0, Math.min(1, activation));
+        const normAct = Math.max(0, Math.min(1, Math.abs(activation)));
 
         ctx.save();
         if (isFiltered) {
@@ -1784,7 +1848,7 @@ class BrainVisualizer {
             labelText = `H ${index}`;
         }
 
-        const valStr = normAct.toFixed(2);
+        const valStr = activation.toFixed(2);
 
         ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
         ctx.fillStyle = isFiltered ? "#484f58" : "#e6edf3";

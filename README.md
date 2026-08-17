@@ -61,7 +61,7 @@ Simulates three distinct biological organisms with on-canvas neural state teleme
 
 ### `DenseNetwork` (`networks/dense_network.js`)
 * Contiguous `Float32Array` buffers with zero heap allocations during `activate()`.
-* Non-saturating **Leaky ReLU** for hidden layers and **Fast Algebraic Sigmoid** for bounded $[0, 1]$ output activations.
+* Bounded **Fast Tanh** $[-1, 1]$ for hidden layers (prevents activation explosion in deep networks) and **Fast Algebraic Sigmoid** for bounded $[0, 1]$ output activations.
 * High-speed `clone()` via raw buffer copies (`memcpy`) and in-place `mutate()`.
 
 ### `SparseNetwork` (`networks/sparse_network.js`)

@@ -111,6 +111,16 @@ function spawnWideDense() {
     addEntity("📊 Wide Network", brain);
 }
 
+function spawnGiantDense() {
+    clearAllEntities();
+    const layers = Array(30).fill(30);
+    const brain = new DenseNetwork({
+        name: "Giant 30x30 Matrix",
+        layerSizes: layers
+    });
+    addEntity("🪐 Giant 30x30 Matrix", brain);
+}
+
 function spawnSparseReflex() {
     clearAllEntities();
     const brain = new SparseNetwork({
@@ -381,6 +391,7 @@ document.getElementById("preset-deep-dense").addEventListener("click", spawnDeep
 document.getElementById("preset-mega-dense").addEventListener("click", spawnMegaDense);
 document.getElementById("preset-ultra-deep").addEventListener("click", spawnUltraDeep);
 document.getElementById("preset-wide-dense").addEventListener("click", spawnWideDense);
+document.getElementById("preset-giant-dense").addEventListener("click", spawnGiantDense);
 document.getElementById("preset-sparse-reflex").addEventListener("click", spawnSparseReflex);
 document.getElementById("preset-sparse-loop").addEventListener("click", spawnSparseLoop);
 document.getElementById("preset-sparse-complex").addEventListener("click", spawnSparseComplex);
