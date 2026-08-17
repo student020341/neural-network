@@ -27,13 +27,19 @@ class Flower {
             0, // adjust size
         ];
 
+        this._initBrain();
+        this.think();
+    }
+
+    _initBrain() {
         this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
             this.outputs.length
         ]);
-
-        this.think();
+        this.brain.name = "Flower";
+        this.brain.inputLabels = ["Star Dist"];
+        this.brain.outputLabels = ["Growth Rate"];
     }
 
     onResize(canvas) {
@@ -68,11 +74,7 @@ class Flower {
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
-            this.brain = new DenseNetwork([
-                this.inputs.length,
-                Math.max(this.inputs.length, this.outputs.length) + 1,
-                this.outputs.length
-            ]);
+            this._initBrain();
             this.think();
         }
 

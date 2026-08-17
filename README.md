@@ -17,6 +17,8 @@ A zero-dependency neural network and artificial life simulation project written 
 ├── networks/
 │   ├── dense_network.js        # Optimized layered MLP with Leaky ReLU & Fast Sigmoid
 │   └── sparse_network.js       # Topology-evolving sparse network with recurrent memory loops
+├── tools/
+│   └── brain_visualizer.js     # Real-time Picture-in-Picture interactive brain HUD (pan/zoom/filter)
 └── experiments/
     ├── simple-dense/           # Multi-creature simulation (Hopper, Flower, Fish)
     │   ├── index.html

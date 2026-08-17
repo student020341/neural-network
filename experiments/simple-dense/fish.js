@@ -29,13 +29,27 @@ class Fish {
             0, // move up
         ];
 
+        this._initBrain();
+        this.think();
+    }
+
+    _initBrain() {
         this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
+            8,
+            8,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
             this.outputs.length
         ]);
-
-        this.think();
+        this.brain.name = "Fish";
+        this.brain.inputLabels = ["Wall Forward", "Ceiling Dist"];
+        this.brain.outputLabels = ["Direction", "Forward Speed", "Swim Up"];
     }
 
     onResize(canvas) {
@@ -71,11 +85,7 @@ class Fish {
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
-            this.brain = new DenseNetwork([
-                this.inputs.length,
-                Math.max(this.inputs.length, this.outputs.length) + 1,
-                this.outputs.length
-            ]);
+            this._initBrain();
         }
 
         this.bubbleSinAcc += dt;

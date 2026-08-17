@@ -32,13 +32,19 @@ class Hopper {
 
         this.jumpValue = 0;
 
+        this._initBrain();
+        this.think();
+    }
+
+    _initBrain() {
         this.brain = new DenseNetwork([
             this.inputs.length,
             Math.max(this.inputs.length, this.outputs.length) + 1,
             this.outputs.length
         ]);
-
-        this.think();
+        this.brain.name = "Hopper";
+        this.brain.inputLabels = ["Ground Dist", "Fall Velocity", "Idle Time"];
+        this.brain.outputLabels = ["Leg Extension"];
     }
 
     onResize(canvas) {
@@ -81,11 +87,7 @@ class Hopper {
         this.brainScramble += dt;
         if (this.brainScramble >= this.brainScrambleMax) {
             this.brainScramble = 0;
-            this.brain = new DenseNetwork([
-                this.inputs.length,
-                Math.max(this.inputs.length, this.outputs.length) + 1,
-                this.outputs.length
-            ]);
+            this._initBrain();
         }
 
         // leg extension for other calculations
