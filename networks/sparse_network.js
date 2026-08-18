@@ -222,6 +222,9 @@ class SparseNetwork {
 
     /**
      * Mutate weights, biases, or topology (add/remove links or nodes).
+     * @param {Object} [options]
+     * @param {number} [options.addConnectionRate]
+     * @param {number} [options.addNodeRate]
      */
     mutate(rate = 0.1, options = {}) {
         const strength = options.strength || 0.2;

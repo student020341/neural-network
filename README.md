@@ -20,15 +20,21 @@ A zero-dependency neural network and artificial life simulation project written 
 ├── tools/
 │   └── brain_visualizer.js     # Real-time Picture-in-Picture interactive brain HUD (pan/zoom/filter)
 └── experiments/
-    ├── simple-dense/           # Multi-creature simulation (Hopper, Flower, Fish)
-    │   ├── index.html
-    │   ├── hopper.js
-    │   ├── flower.js
-    │   ├── fish.js
-    │   └── main.js
-    └── visualizer-sandbox/     # Brain visualizer stress workbench & custom topology lab
-        ├── index.html
-        └── sandbox.js
+│   ├── simple-dense/           # Multi-creature simulation (Hopper, Flower, Fish with Dense MLP)
+│   │   ├── index.html
+│   │   ├── hopper.js
+│   │   ├── flower.js
+│   │   ├── fish.js
+│   │   └── main.js
+│   ├── simple-sparse/          # Multi-creature simulation (misc with Sparse Recurrent)
+│   │   ├── index.html
+│   │   ├── hopper.js
+│   │   ├── flower.js
+│   │   ├── fish.js
+│   │   └── main.js
+│   └── visualizer-sandbox/     # Brain visualizer stress workbench & custom topology lab
+│       ├── index.html
+│       └── sandbox.js
 ```
 
 ---
@@ -36,7 +42,10 @@ A zero-dependency neural network and artificial life simulation project written 
 ## Experiments
 
 ### 1. Simple Dense Creatures (`experiments/simple-dense/`)
-Simulates three distinct biological organisms with on-canvas neural state telemetry:
+Simulates three distinct biological organisms with on-canvas neural state telemetry powered by `DenseNetwork` MLPs.
+
+### 2. Simple Sparse Creatures (`experiments/simple-sparse/`)
+Simulates the same three organisms powered by `SparseNetwork` featuring direct sensor-to-motor skip connections and recurrent memory feedback loops.
 
 #### Hopper
 * **Input 0** (top bar): Distance to the ground.

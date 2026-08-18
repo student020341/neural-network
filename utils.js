@@ -28,3 +28,11 @@ const range = (x1, y1, x2, y2, value) => lerp(x2, y2, invlerp(x1, y1, value));
 const randRange = (min, max) => min + Math.random() * (max - min);
 const randInt = (min, max) => Math.floor(randRange(min, max + 1));
 const randChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ID Generators
+let _idCounter = 0;
+const nextId = (prefix = "") => (prefix ? `${prefix}_${++_idCounter}` : ++_idCounter);
+const uid = (prefix = "", len = 6) => {
+    const hash = Math.random().toString(36).substring(2, 2 + len);
+    return prefix ? `${prefix}_${hash}` : hash;
+};

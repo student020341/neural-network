@@ -14,13 +14,17 @@ class BrainVisualizer {
      * @param {number} [options.height=380] Default HUD height
      * @param {string} [options.viewMode="full"] Default view mode: 'full' | 'eeg' | 'flow' | 'io'
      * @param {boolean} [options.autoLoop=true] Automatically animate via requestAnimationFrame
+     * @param {boolean} [options.closed=false] Start closed/hidden until opened or inspected
+     * @param {boolean} [options.open=true] Alternative to closed (set false to start closed)
+     * @param {boolean} [options.startClosed=false] Alias for closed
      */
     constructor(options = {}) {
         this.width = options.width || 500;
         this.height = options.height || 380;
         this.globalViewMode = options.viewMode || "full";
         this.minWeightThreshold = 0.05;
-        this.isOpen = true;
+        const startClosed = Boolean(options.closed || options.startClosed || options.open === false);
+        this.isOpen = !startClosed;
         this.pipWindow = null;
 
         // Registry of tracked brain providers: [{ label, entity, accessor, viewMode? }]
@@ -264,6 +268,9 @@ class BrainVisualizer {
 
         this.container = document.createElement("div");
         this.container.className = "brain-viz-container";
+        if (!this.isOpen) {
+            this.container.style.display = "none";
+        }
         this.container.innerHTML = `
             <div class="brain-viz-header" id="brain-viz-drag">
                 <div class="brain-viz-title" id="brain-viz-name">🧠 Neural Telemetry</div>
@@ -696,13 +703,27 @@ class BrainVisualizer {
     }
 
     /**
-     * Track a brain provider closure.
-     * @param {string} label Human-readable label for the brain/creature
-     * @param {Object} entity Host creature/agent object
-     * @param {function(Object): (DenseNetwork|SparseNetwork)} accessor Function to retrieve the brain from the entity
+     * Track a brain provider closure or entity directly.
+     * Supports flexible signatures:
+     * - track(entity)
+     * - track(label, entity)
+     * - track(label, entity, accessor, viewMode)
+     * 
+     * @param {string|Object} label Human-readable label or the entity itself
+     * @param {Object} [entity] Host creature/agent object
+     * @param {function(Object): (DenseNetwork|SparseNetwork)} [accessor] Function to retrieve the brain from the entity
      * @param {string} [viewMode] Optional per-card view override: 'full' | 'eeg' | 'flow' | 'io'
      */
     track(label, entity, accessor, viewMode) {
+        if (label && typeof label === 'object') {
+            viewMode = accessor;
+            accessor = entity;
+            entity = label;
+            label = entity.brain?.name || entity.name || entity.label || "Agent";
+        } else if (!label && entity) {
+            label = entity.brain?.name || entity.name || entity.label || "Agent";
+        }
+
         this.untrack(label);
 
         this.providers.push({
@@ -714,11 +735,6 @@ class BrainVisualizer {
 
         this._updateTitle();
         this._recomputeFilterCache();
-
-        if (!this.isOpen) {
-            this.isOpen = true;
-            this.container.style.display = "flex";
-        }
     }
 
     untrack(label) {
@@ -736,6 +752,7 @@ class BrainVisualizer {
     inspect(label, entity, accessor, viewMode) {
         this.clear();
         this.track(label, entity, accessor, viewMode);
+        this.open();
     }
 
     _updateTitle() {
@@ -749,6 +766,11 @@ class BrainVisualizer {
         }
     }
 
+    open() {
+        this.isOpen = true;
+        this.container.style.display = "flex";
+    }
+
     close() {
         this.isOpen = false;
         if (this.pipWindow) {
@@ -756,6 +778,14 @@ class BrainVisualizer {
             this.pipWindow = null;
         }
         this.container.style.display = "none";
+    }
+
+    toggle() {
+        if (this.isOpen) {
+            this.close();
+        } else {
+            this.open();
+        }
     }
 
     async togglePopout() {
@@ -1295,6 +1325,11 @@ class BrainVisualizer {
             }
         }
 
+        // Temporal Wave Progress (2.2s pulse sweeping from left to right)
+        const sweepPeriod = 2200;
+        const sweepPhase = (performance.now() % sweepPeriod) / sweepPeriod;
+        const invSpan = 0.5 / Math.max(1, outX - inX);
+
         // 10-Tier Style-Bucketed Batched Path Rendering
         const BUCKETS = [
             { color: "rgba(248, 81, 73, 0.22)", width: 1.0 },
@@ -1335,7 +1370,13 @@ class BrainVisualizer {
                 const srcAct = currentVals ? (currentVals[conn.src] || 0) : 0;
                 const transmittedSignal = Math.abs(srcAct * conn.weight);
 
-                const effectiveW = (absW * 0.35) + (transmittedSignal * 0.85) + (isSpotlighted ? 0.5 : 0);
+                // Zero-allocation polynomial bell wave pulse
+                const connDepth = (src.x + tgt.x - 2 * inX) * invSpan;
+                let d = Math.abs(connDepth - sweepPhase);
+                if (d > 0.5) d = 1.0 - d;
+                const waveBoost = d < 0.18 ? (1.0 - (d / 0.18) * (d / 0.18)) * 0.45 : 0;
+
+                const effectiveW = (absW * 0.35) + (transmittedSignal * 0.85) + (isSpotlighted ? 0.5 : waveBoost * 0.35);
                 let tier = 0;
                 if (effectiveW >= 1.15) tier = 3;
                 else if (effectiveW >= 0.68) tier = 2;
@@ -1381,7 +1422,8 @@ class BrainVisualizer {
             const isFiltered = (this.isFiltering && filterData && !filterData.activeNodes.has(i)) ||
                                (hoveredNodeIdx >= 0 && !spotlightNodes.has(i));
 
-            this._drawNode(ctx, pos.x, pos.y, act, isInput, isOutput, i, brain, isFiltered);
+            const localIdx = isInput ? i : (isOutput ? (i - numInputs) : (i - numInputs - numOutputs));
+            this._drawNode(ctx, pos.x, pos.y, act, isInput, isOutput, localIdx, brain, isFiltered);
         }
     }
 
@@ -1842,8 +1884,7 @@ class BrainVisualizer {
         if (isInput) {
             labelText = brain.inputLabels?.[index] || `In ${index}`;
         } else if (isOutput) {
-            const outIdx = brain.layerSizes ? index : (index - brain.numInputs);
-            labelText = brain.outputLabels?.[outIdx] || `Out ${outIdx}`;
+            labelText = brain.outputLabels?.[index] || `Out ${index}`;
         } else {
             labelText = `H ${index}`;
         }
