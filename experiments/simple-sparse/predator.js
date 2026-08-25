@@ -296,23 +296,31 @@ class PredatorFish {
             return;
         }
 
-        // Think step (Enqueues for frame-budgeted scheduler)
+        // Think step (Enqueues into FIFO thinkQueue or sets needsThink)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.needsThink = true;
+            if (typeof thinkQueue !== "undefined" && !this.inThinkQueue) {
+                this.inThinkQueue = true;
+                thinkQueue.push(this);
+            } else {
+                this.needsThink = true;
+            }
         }
 
         this.mouthOpen = gape > 0.5;
 
-        // Smoothly animate mouth aperture unhinging
+        // Smoothly animate mouth aperture unhinging (60 FPS)
         const targetAperture = this.mouthOpen ? 1.0 : 0.0;
         this.mouthAperture += (targetAperture - this.mouthAperture) * Math.min(1.0, dt * 14);
 
-        // --- Selective Hazard & Hunting Mechanics ---
+        // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
+        this.frameTick = (this.frameTick || 0) + 1;
+        const doInteractions = (this.frameTick % 2) === 0;
+
         // 1. Jellyfish Hazard: Predator is ONLY harmed if mouth is open during contact with an UNTOSSED jellyfish!
         const mouthRadius = this.radius * (1.0 + this.mouthAperture * 0.25);
-        if (this.invulnerableTimer <= 0 && this.mouthOpen) {
+        if (doInteractions && this.invulnerableTimer <= 0 && this.mouthOpen) {
             for (let i = 0; i < jellies.length; i++) {
                 const j = jellies[i];
                 if (!j.dead && j.tossedTimer <= 0) {
@@ -333,7 +341,7 @@ class PredatorFish {
         if (this.swallowCooldown > 0) this.swallowCooldown -= dt;
 
         // 2. Hunting Prey: Predator can ONLY eat if mouth is open and not on swallow cooldown!
-        if (this.mouthOpen && this.swallowCooldown <= 0) {
+        if (doInteractions && this.mouthOpen && this.swallowCooldown <= 0) {
             let ate = false;
 
             // Helper to apply food & check gluttony overload

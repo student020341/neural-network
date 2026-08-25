@@ -340,11 +340,16 @@ class Crab {
             return;
         }
 
-        // Think step (Enqueues for frame-budgeted scheduler)
+        // Think step (Enqueues into FIFO thinkQueue or sets needsThink)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.needsThink = true;
+            if (typeof thinkQueue !== "undefined" && !this.inThinkQueue) {
+                this.inThinkQueue = true;
+                thinkQueue.push(this);
+            } else {
+                this.needsThink = true;
+            }
         }
 
         // --- Muscle Strain & Fatigue Mechanics ---
@@ -375,8 +380,12 @@ class Crab {
         this.mouthOpen = !this.isStrained && wantsMunch;
         this.pincerActive = !this.isStrained && wantsPincer;
 
-        // Active mouth munching (consumes at most 1 item per frame)
-        if (this.mouthOpen) {
+        // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
+        this.frameTick = (this.frameTick || 0) + 1;
+        const doInteractions = (this.frameTick % 2) === 0;
+
+        // Active mouth munching (consumes at most 1 item per interaction tick)
+        if (doInteractions && this.mouthOpen) {
             let ate = false;
 
             // Eat settled food detritus
@@ -435,8 +444,8 @@ class Crab {
                         const dy = j.y - this.y;
                         if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
                         if (dx * dx + dy * dy < maxR * maxR) {
-                            j.takeDamage(0.25 * dt);
-                            this.hunger = Math.max(0, this.hunger - 0.15 * dt);
+                            j.takeDamage(0.5 * dt);
+                            this.hunger = Math.max(0, this.hunger - 0.30 * dt);
                             this._captureHighlight();
                             break;
                         }
@@ -446,7 +455,7 @@ class Crab {
         }
 
         // Pincer Strike & Dueling (Can duel rival crabs or toss floor-dwelling jellies!)
-        if (this.pincerActive && this.pincerCooldown <= 0) {
+        if (doInteractions && this.pincerActive && this.pincerCooldown <= 0) {
             let tossedJelly = false;
 
             // 1. Toss floor-dwelling jellyfish into vulnerable tumbling state & spawn food!

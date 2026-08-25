@@ -259,17 +259,26 @@ class RibbonEel {
             return;
         }
 
-        // Think step (Enqueues for frame-budgeted scheduler)
+        // Think step (Enqueues into FIFO thinkQueue or sets needsThink)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.needsThink = true;
+            if (typeof thinkQueue !== "undefined" && !this.inThinkQueue) {
+                this.inThinkQueue = true;
+                thinkQueue.push(this);
+            } else {
+                this.needsThink = true;
+            }
         }
 
         this.mouthOpen = gulp > 0.5;
 
-        // Catch sinking falling carcasses (consumes at most 1 item per frame)
-        if (this.mouthOpen) {
+        // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
+        this.frameTick = (this.frameTick || 0) + 1;
+        const doInteractions = (this.frameTick % 2) === 0;
+
+        // Catch sinking falling carcasses (consumes at most 1 item per interaction tick)
+        if (doInteractions && this.mouthOpen) {
             const mouthRadius = this.size * 0.42;
             for (let i = 0; i < carcasses.length; i++) {
                 const c = carcasses[i];

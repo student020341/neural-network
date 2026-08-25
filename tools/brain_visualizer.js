@@ -802,6 +802,40 @@ class BrainVisualizer {
         }
     }
 
+    /**
+     * @param {Object} stats
+     * @param {number} [stats.fps]
+     * @param {number} [stats.frameTime]
+     * @param {number} [stats.physTime]
+     * @param {number} [stats.brainTime]
+     * @param {number} [stats.drawTime]
+     * @param {number} [stats.queueLength]
+     * @param {number} [stats.brainRate]
+     */
+    updatePerformanceStats(stats = {}) {
+        if (!this.isOpen || !this.perfFps) return;
+
+        const fps = stats.fps !== undefined ? Math.round(stats.fps) : 60;
+        const frameTime = stats.frameTime !== undefined ? stats.frameTime.toFixed(1) : "0.0";
+        const physTime = stats.physTime !== undefined ? stats.physTime.toFixed(1) : "0.0";
+        const brainTime = stats.brainTime !== undefined ? stats.brainTime.toFixed(1) : "0.0";
+        const drawTime = stats.drawTime !== undefined ? stats.drawTime.toFixed(1) : "0.0";
+        const queueLength = stats.queueLength !== undefined ? stats.queueLength : 0;
+        const brainRate = stats.brainRate !== undefined ? Math.round(stats.brainRate) : 0;
+
+        if (this.perfFps) this.perfFps.textContent = `${fps} FPS`;
+        if (this.perfFrameTime) this.perfFrameTime.textContent = `(${frameTime}ms)`;
+        if (this.perfPhysTime) this.perfPhysTime.textContent = `${physTime}ms`;
+        if (this.perfBrainTime) this.perfBrainTime.textContent = `${brainTime}ms`;
+        if (this.perfDrawTime) this.perfDrawTime.textContent = `${drawTime}ms`;
+        if (this.perfQueue) this.perfQueue.textContent = `${queueLength}`;
+        if (this.perfRate) this.perfRate.textContent = `${brainRate} Hz`;
+
+        if (this.perfDot) {
+            this.perfDot.className = "perf-dot" + (fps >= 55 ? "" : (fps >= 35 ? " yellow" : " red"));
+        }
+    }
+
     async togglePopout() {
         if (this.pipWindow) {
             this.pipWindow.close();

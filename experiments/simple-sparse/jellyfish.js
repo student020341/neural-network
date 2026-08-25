@@ -308,42 +308,51 @@ class Jellyfish {
         this.currentFx *= Math.max(0, 1 - dt * 2.5);
         this.currentFy *= Math.max(0, 1 - dt * 2.5);
 
-        // --- Nutrition Threshold Filter by Size Tier ---
-        // Small jellies need N >= 0.28, Medium need N >= 0.48, Large need N >= 0.70!
-        const minNutritionNeeded = 0.28 + sizeRatio * 0.44;
+        // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
+        this.frameTick = (this.frameTick || 0) + 1;
+        const doInteractions = (this.frameTick % 2) === 0;
 
-        // Catch falling food pellets (consumes at most 1 item per frame)
-        for (const f of foods) {
-            if (f.state === "drifting") {
-                const dx = Math.abs(this.x - f.x);
-                const dy = f.y - this.y;
-                if (dx < this.radius + f.radius && dy > -this.radius * 0.5 && dy < this.radius * 2.5) {
-                    f.state = "dead";
-                    this.foodEaten++;
-                    const nutr = f.nutrition || 0.35;
+        // Catch falling food pellets (consumes at most 1 item per interaction tick)
+        if (doInteractions) {
+            const minNutritionNeeded = 0.28 + sizeRatio * 0.44;
+            for (let i = 0; i < foods.length; i++) {
+                const f = foods[i];
+                if (f.state === "drifting") {
+                    const dx = Math.abs(this.x - f.x);
+                    const dy = f.y - this.y;
+                    if (dx < this.radius + f.radius && dy > -this.radius * 0.5 && dy < this.radius * 2.5) {
+                        f.state = "dead";
+                        this.foodEaten++;
+                        const nutr = f.nutrition || 0.35;
 
-                    // If nutrition meets the size requirement, recover hunger
-                    if (nutr >= minNutritionNeeded) {
-                        const effectiveRecovery = (nutr - minNutritionNeeded + 0.25) * (0.85 - sizeRatio * 0.2);
-                        this.hunger = Math.max(0, this.hunger - effectiveRecovery);
+                        // If nutrition meets the size requirement, recover hunger
+                        if (nutr >= minNutritionNeeded) {
+                            const effectiveRecovery = (nutr - minNutritionNeeded + 0.25) * (0.85 - sizeRatio * 0.2);
+                            this.hunger = Math.max(0, this.hunger - effectiveRecovery);
+                        }
+
+                        this._captureHighlight();
+                        break;
                     }
-
-                    this._captureHighlight();
-                    break;
                 }
             }
         }
 
-        // Think step (Enqueues for frame-budgeted scheduler)
+        // Think step (Enqueues into FIFO thinkQueue or sets needsThink)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.needsThink = true;
+            if (typeof thinkQueue !== "undefined" && !this.inThinkQueue) {
+                this.inThinkQueue = true;
+                thinkQueue.push(this);
+            } else {
+                this.needsThink = true;
+            }
         }
 
         // --- Water Jet Repel Dueling Mechanic ---
         this.jetActive = jet > 0.5;
-        if (this.jetActive) {
+        if (doInteractions && this.jetActive) {
             this.jetTimer = 0.22;
             const blastRadius = this.radius * 2.4;
 

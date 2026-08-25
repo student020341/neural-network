@@ -25,8 +25,8 @@ let currentOffsetX = 0;
 let currentOffsetY = 0;
 
 const applyTransform = () => {
-    // Cap devicePixelRatio to 1.5 on high-DPI mobile devices to prevent GPU rasterization fill-rate bottlenecks
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    // 1:1 Native pixel alignment to match actual canvas coordinates and eliminate mobile fill-rate overhead
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.0);
     const cw = window.innerWidth;
     const ch = window.innerHeight;
 

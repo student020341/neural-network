@@ -314,17 +314,26 @@ class TurnFish {
             return;
         }
 
-        // Brain Think Step (Enqueues for frame-budgeted scheduler)
+        // Brain Think Step (Enqueues into FIFO thinkQueue or sets needsThink)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.needsThink = true;
+            if (typeof thinkQueue !== "undefined" && !this.inThinkQueue) {
+                this.inThinkQueue = true;
+                thinkQueue.push(this);
+            } else {
+                this.needsThink = true;
+            }
         }
 
         this.mouthOpen = gulp > 0.5;
 
-        // Spinners eat at most 1 item per frame, and ONLY if mouth is open!
-        if (this.mouthOpen) {
+        // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
+        // Runs collision/eating checks on alternating frames (50% reduction in pairwise math)
+        this.frameTick = (this.frameTick || 0) + 1;
+        const doInteractions = (this.frameTick % 2) === 0;
+
+        if (doInteractions && this.mouthOpen) {
             const mouthRadius = this.size * 0.48;
 
             for (let i = 0; i < foods.length; i++) {
@@ -346,7 +355,7 @@ class TurnFish {
                     }
 
                     this._captureHighlight();
-                    break; // Consume at most 1 item per frame
+                    break; // Consume at most 1 item per interaction tick
                 }
             }
 
@@ -363,7 +372,7 @@ class TurnFish {
                         this.foodEaten += 2;
                         this.hunger = Math.max(0, this.hunger - 0.6);
                         if (this.hunger < 0.30) {
-                            this.gluttony = Math.min(1.0, this.gluttony + 0.45);
+                            this.gluttony = Math.min(1.0, this.gluttony + 0.4);
                         }
                         this._captureHighlight();
                         break;

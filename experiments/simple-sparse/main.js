@@ -71,6 +71,9 @@ const eels = [];
 const foods = [];
 const carcasses = [];
 
+// Shared FIFO Brain Scheduler Queue
+const thinkQueue = [];
+
 let predatorKillCount = 0;
 let foodSpawnTimer = 0;
 let creatureSpawnTimer = 0;
@@ -85,8 +88,26 @@ const domHUD = {
     cntEels: document.getElementById("cnt-eels"),
     cntFood: document.getElementById("cnt-food"),
     cntKills: document.getElementById("cnt-kills"),
+    // Ecosystem Performance Budget Pod Elements
+    perfFpsBadge: document.getElementById("perf-fps-badge"),
+    perfFrameTime: document.getElementById("perf-frame-time"),
+    perfPhysTime: document.getElementById("perf-phys-time"),
+    perfBrainTime: document.getElementById("perf-brain-time"),
+    perfDrawTime: document.getElementById("perf-draw-time"),
+    perfQueueDepth: document.getElementById("perf-queue-depth"),
+    perfBrainRate: document.getElementById("perf-brain-rate")
 };
 let hudUpdateTimer = 0;
+
+// Subsystem Performance Profiling Telemetry
+const perfStats = {
+    physTime: 0,
+    brainTime: 0,
+    drawTime: 0,
+    brainTicksInWindow: 0,
+    windowTime: 0,
+    smoothedFps: 60
+};
 
 // Helper to record champion brains with adaptive score decay & stagnation tracking
 function recordDeath(creature) {
@@ -479,46 +500,35 @@ const logic = (dt) => {
         if (c.state === "dead") carcasses.splice(i, 1);
     }
 
-    // E. Scheduled Brain Think Passes with Frame Quota (Max 16 neural evaluations per frame)
-    let brainTicksLeft = 16;
+    // E. Scheduled Brain Think Passes via Fair FIFO Queue (Max 16 neural evaluations per frame)
+    const tBrainStart = performance.now();
+    const thinkBatch = Math.min(thinkQueue.length, 16);
+    for (let i = 0; i < thinkBatch; i++) {
+        const creature = thinkQueue.shift();
+        if (!creature) continue;
+        creature.inThinkQueue = false;
+        if (creature.dead) continue;
 
-    for (let i = 0; i < turnFishes.length && brainTicksLeft > 0; i++) {
-        const f = turnFishes[i];
-        if (f.needsThink) {
-            f.performScheduledThink(foods, crabs, predators, jellies);
-            brainTicksLeft--;
+        if (creature.species === "TurnFish") {
+            creature.performScheduledThink(foods, crabs, predators, jellies);
+        } else if (creature.species === "Crab") {
+            creature.performScheduledThink(foods, carcasses, crabs, predators, jellies);
+        } else if (creature.species === "Jellyfish") {
+            creature.performScheduledThink(foods, jellies);
+        } else if (creature.species === "Predator") {
+            creature.performScheduledThink(turnFishes, crabs, jellies, predators);
+        } else if (creature.species === "Eel") {
+            creature.performScheduledThink(carcasses, jellies, predators);
         }
     }
-    for (let i = 0; i < crabs.length && brainTicksLeft > 0; i++) {
-        const c = crabs[i];
-        if (c.needsThink) {
-            c.performScheduledThink(foods, carcasses, crabs, predators, jellies);
-            brainTicksLeft--;
-        }
-    }
-    for (let i = 0; i < jellies.length && brainTicksLeft > 0; i++) {
-        const j = jellies[i];
-        if (j.needsThink) {
-            j.performScheduledThink(foods, jellies);
-            brainTicksLeft--;
-        }
-    }
-    for (let i = 0; i < predators.length && brainTicksLeft > 0; i++) {
-        const p = predators[i];
-        if (p.needsThink) {
-            p.performScheduledThink(turnFishes, crabs, jellies, predators);
-            brainTicksLeft--;
-        }
-    }
-    for (let i = 0; i < eels.length && brainTicksLeft > 0; i++) {
-        const e = eels[i];
-        if (e.needsThink) {
-            e.performScheduledThink(carcasses, jellies, predators);
-            brainTicksLeft--;
-        }
-    }
+    const brainDur = performance.now() - tBrainStart;
+    perfStats.brainTime = perfStats.brainTime * 0.8 + brainDur * 0.2;
+    perfStats.brainTicksInWindow += thinkBatch;
+    perfStats.windowTime += dt;
 
     // F. Update Physics and Actions (Full 60 FPS)
+    const tPhysStart = performance.now();
+
     // TurnFish
     for (let i = turnFishes.length - 1; i >= 0; i--) {
         const f = turnFishes[i];
@@ -612,6 +622,9 @@ const logic = (dt) => {
         }
     }
 
+    const physDur = performance.now() - tPhysStart;
+    perfStats.physTime = perfStats.physTime * 0.8 + physDur * 0.2;
+
     // G. Throttled Telemetry HUD Counters (~6 Hz to avoid DOM layout thrashing)
     hudUpdateTimer += dt;
     if (hudUpdateTimer >= 0.16) {
@@ -624,11 +637,33 @@ const logic = (dt) => {
         if (domHUD.cntEels) domHUD.cntEels.textContent = eels.length;
         if (domHUD.cntFood) domHUD.cntFood.textContent = foods.length;
         if (domHUD.cntKills) domHUD.cntKills.textContent = predatorKillCount;
+
+        // Update Ecosystem Performance & Budget Pod in Collapsible Drawer
+        const fps = 1 / Math.max(0.001, dt);
+        perfStats.smoothedFps = perfStats.smoothedFps * 0.7 + fps * 0.3;
+        const brainRate = (perfStats.brainTicksInWindow / Math.max(0.001, perfStats.windowTime));
+        const totalFrameTime = perfStats.physTime + perfStats.brainTime + perfStats.drawTime;
+
+        if (domHUD.perfFpsBadge) {
+            const roundedFps = Math.round(perfStats.smoothedFps);
+            domHUD.perfFpsBadge.textContent = `${roundedFps} FPS`;
+            domHUD.perfFpsBadge.className = "perf-badge" + (roundedFps >= 55 ? "" : (roundedFps >= 35 ? " yellow" : " red"));
+        }
+        if (domHUD.perfFrameTime) domHUD.perfFrameTime.textContent = `${totalFrameTime.toFixed(1)}ms`;
+        if (domHUD.perfPhysTime) domHUD.perfPhysTime.textContent = `${perfStats.physTime.toFixed(1)}ms`;
+        if (domHUD.perfBrainTime) domHUD.perfBrainTime.textContent = `${perfStats.brainTime.toFixed(1)}ms`;
+        if (domHUD.perfDrawTime) domHUD.perfDrawTime.textContent = `${perfStats.drawTime.toFixed(1)}ms`;
+        if (domHUD.perfQueueDepth) domHUD.perfQueueDepth.textContent = thinkQueue.length;
+        if (domHUD.perfBrainRate) domHUD.perfBrainRate.textContent = `${Math.round(brainRate)} Hz`;
+
+        perfStats.brainTicksInWindow = 0;
+        perfStats.windowTime = 0;
     }
 };
 
 // 7. Layered Render Step
 const render = (_, cw, ch) => {
+    const tDrawStart = performance.now();
     // Clear entire screen (including letterbox/pillarbox margins where edge entities enter)
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -665,6 +700,9 @@ const render = (_, cw, ch) => {
 
     // Layer 7: Predator Fish (Apex hunters in foreground)
     for (const p of predators) p.draw(ctx);
+
+    const drawDur = performance.now() - tDrawStart;
+    perfStats.drawTime = perfStats.drawTime * 0.8 + drawDur * 0.2;
 };
 
 // Start Main Game Loop
