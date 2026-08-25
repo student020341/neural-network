@@ -763,7 +763,15 @@ class BrainVisualizer {
         if (this.providers.length === 0) {
             this.titleEl.textContent = `🧠 No Targets`;
         } else if (this.providers.length === 1) {
-            this.titleEl.textContent = `🧠 ${this.providers[0].label}`;
+            const p = this.providers[0];
+            const net = p.network;
+            let compStr = "";
+            if (net && typeof net.getComplexity === "function") {
+                const c = net.getComplexity();
+                const maxC = net.maxComplexity;
+                compStr = maxC ? ` [Comp: ${c.toFixed(1)}/${maxC}]` : ` [Comp: ${c.toFixed(1)}]`;
+            }
+            this.titleEl.textContent = `🧠 ${p.label}${compStr}`;
         } else {
             this.titleEl.textContent = `🧠 Telemetry (${this.providers.length} Brains)`;
         }

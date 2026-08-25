@@ -1,7 +1,8 @@
 /**
  * Sparse / Topology-Evolving Neural Network
  * Supports direct sensor-to-motor skip connections, arbitrary hidden topologies,
- * and recurrent memory loops (feedback connections) with zero-allocation activations.
+ * recurrent memory loops (feedback connections), unified complexity metrics,
+ * and automatic neural decay & competitive pruning.
  */
 class SparseNetwork {
     /**
@@ -10,6 +11,9 @@ class SparseNetwork {
      * @param {Object} [options]
      * @param {number} [options.initialHidden=0] Number of initial hidden nodes
      * @param {number} [options.initialConnectivity=0.5] Chance of initial random links [0, 1]
+     * @param {number|null} [options.maxComplexity=null] Maximum allowed complexity score (null for uncapped)
+     * @param {number} [options.weightDecayRate=0.012] L1 synaptic decay rate per mutation
+     * @param {number} [options.minWeightThreshold=0.03] Minimum weight magnitude before pruning
      */
     constructor(numInputs, numOutputs, options = {}) {
         if (numInputs && typeof numInputs === 'object') {
@@ -28,6 +32,11 @@ class SparseNetwork {
         this.numOutputs = numOutputs || 0;
         this.numHidden = options.initialHidden || 0;
         this.totalNodes = this.numInputs + this.numOutputs + this.numHidden;
+
+        // Complexity & Neural Decay Configuration
+        this.maxComplexity = options.maxComplexity !== undefined ? options.maxComplexity : null;
+        this.weightDecayRate = options.weightDecayRate !== undefined ? options.weightDecayRate : 0.012;
+        this.minWeightThreshold = options.minWeightThreshold !== undefined ? options.minWeightThreshold : 0.03;
 
         // Node indexing convention:
         // [0 ... numInputs - 1]                            : Inputs
@@ -57,6 +66,16 @@ class SparseNetwork {
         if (options.initialConnectivity !== undefined) {
             this._initializeRandomConnections(options.initialConnectivity);
         }
+    }
+
+    /**
+     * Computes the unified network complexity score.
+     * Hidden nodes cost 0.35 each, active connections cost 0.10 each.
+     * @returns {number}
+     */
+    getComplexity() {
+        const activeConns = this.connections.filter(c => c.enabled).length;
+        return (this.numHidden * 0.35) + (activeConns * 0.10);
     }
 
     _initializeRandomConnections(density = 0.5) {
@@ -110,6 +129,40 @@ class SparseNetwork {
     }
 
     /**
+     * Prunes a specific connection from the network.
+     */
+    pruneConnection(src, tgt) {
+        const idx = this.connections.findIndex(c => c.src === src && c.tgt === tgt);
+        if (idx !== -1) {
+            this.connections.splice(idx, 1);
+            this.compile();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Prunes the connection with the smallest absolute weight magnitude.
+     */
+    pruneWeakestConnection() {
+        if (this.connections.length === 0) return null;
+        let minIdx = 0;
+        let minWeight = Math.abs(this.connections[0].weight);
+
+        for (let i = 1; i < this.connections.length; i++) {
+            const w = Math.abs(this.connections[i].weight);
+            if (w < minWeight) {
+                minWeight = w;
+                minIdx = i;
+            }
+        }
+
+        const removed = this.connections.splice(minIdx, 1)[0];
+        this.compile();
+        return removed;
+    }
+
+    /**
      * Add a new hidden node or splice a connection (NEAT style).
      * @param {boolean} [splitConnection=false] If true and active connections exist, splits one
      * @returns {number} The newly created node's index
@@ -145,6 +198,95 @@ class SparseNetwork {
 
         this.compile();
         return newHiddenIdx;
+    }
+
+    /**
+     * Prunes a hidden node and remaps all subsequent node indices.
+     * @param {number} nodeIdx Absolute index of the hidden node to remove
+     */
+    pruneNode(nodeIdx) {
+        const hiddenStart = this.numInputs + this.numOutputs;
+        if (nodeIdx < hiddenStart || nodeIdx >= this.totalNodes) return false;
+
+        // 1. Remove all connections attached to this node
+        this.connections = this.connections.filter(c => c.src !== nodeIdx && c.tgt !== nodeIdx);
+
+        // 2. Remap remaining connection source and target indices
+        for (const conn of this.connections) {
+            if (conn.src > nodeIdx) conn.src--;
+            if (conn.tgt > nodeIdx) conn.tgt--;
+        }
+
+        // 3. Shift biases and state buffers left
+        for (let i = nodeIdx; i < this.totalNodes - 1; i++) {
+            this.biases[i] = this.biases[i + 1];
+            this.currentValues[i] = this.currentValues[i + 1];
+            this.previousValues[i] = this.previousValues[i + 1];
+        }
+
+        this.totalNodes--;
+        this.numHidden--;
+        this.compile();
+        return true;
+    }
+
+    /**
+     * Garbage collection pass: detects and prunes disconnected/vestigial hidden nodes.
+     * A hidden node is vestigial if it has 0 incoming connections or 0 outgoing connections.
+     * @returns {number} Count of pruned vestigial nodes
+     */
+    cleanupVestigial() {
+        let prunedCount = 0;
+        let changed = true;
+        const hiddenStart = this.numInputs + this.numOutputs;
+
+        while (changed) {
+            changed = false;
+            for (let i = this.totalNodes - 1; i >= hiddenStart; i--) {
+                const hasIncoming = this.connections.some(c => c.enabled && c.tgt === i);
+                const hasOutgoing = this.connections.some(c => c.enabled && c.src === i);
+
+                if (!hasIncoming || !hasOutgoing) {
+                    this.pruneNode(i);
+                    prunedCount++;
+                    changed = true;
+                    break; // Restart scan after index shift
+                }
+            }
+        }
+
+        return prunedCount;
+    }
+
+    /**
+     * Enforces the maximum complexity budget by pruning weakest connections and nodes.
+     * @param {number} maxC 
+     */
+    enforceComplexityCap(maxC) {
+        if (!maxC || maxC <= 0) return;
+
+        // 1. First prune weakest connections while above budget
+        while (this.getComplexity() > maxC && this.connections.length > 1) {
+            this.pruneWeakestConnection();
+        }
+
+        // 2. If still above budget, prune least connected hidden nodes
+        while (this.getComplexity() > maxC && this.numHidden > 0) {
+            const hiddenStart = this.numInputs + this.numOutputs;
+            let lowestNode = hiddenStart;
+            let minConnCount = Infinity;
+
+            for (let h = hiddenStart; h < this.totalNodes; h++) {
+                const count = this.connections.filter(c => c.src === h || c.tgt === h).length;
+                if (count < minConnCount) {
+                    minConnCount = count;
+                    lowestNode = h;
+                }
+            }
+            this.pruneNode(lowestNode);
+        }
+
+        this.compile();
     }
 
     /**
@@ -225,10 +367,18 @@ class SparseNetwork {
     }
 
     /**
-     * Mutate weights, biases, or topology (add/remove links or nodes).
+     * Mutate weights, biases, or topology (add/remove links or nodes),
+     * applying L1 weight decay, progressive pruning pressure, and competitive replacement.
+     * 
+     * @param {number} rate Base mutation probability
      * @param {Object} [options]
-     * @param {number} [options.addConnectionRate]
-     * @param {number} [options.addNodeRate]
+     * @param {number} [options.strength] Weight mutation range
+     * @param {number} [options.addConnectionRate] Probability of adding a new connection
+     * @param {number} [options.addNodeRate] Probability of adding a new hidden node
+     * @param {number} [options.weightDecayRate] L1 shrinkage rate
+     * @param {number} [options.minWeightThreshold] Sub-threshold pruning cut-off
+     * @param {number} [options.basePruneConnRate] Baseline stochastic connection prune rate
+     * @param {number} [options.basePruneNodeRate] Baseline stochastic node prune rate
      */
     mutate(rate = 0.1, options = {}) {
         const strength = options.strength || 0.2;
@@ -237,7 +387,21 @@ class SparseNetwork {
         const addNodeRate = options.addNodeRate || 0.02;
         const toggleRate = options.toggleRate || 0.01;
 
-        // 1. Mutate connection weights
+        const weightDecay = options.weightDecayRate !== undefined ? options.weightDecayRate : this.weightDecayRate;
+        const minWeightThresh = options.minWeightThreshold !== undefined ? options.minWeightThreshold : this.minWeightThreshold;
+        const maxC = (options.maxComplexity !== undefined ? options.maxComplexity : this.maxComplexity);
+
+        // 1. Mild L1 Synaptic Weight Decay & Threshold Pruning
+        if (weightDecay > 0) {
+            for (const conn of this.connections) {
+                conn.weight *= (1.0 - weightDecay);
+            }
+        }
+        if (minWeightThresh > 0 && this.connections.length > 1) {
+            this.connections = this.connections.filter(c => Math.abs(c.weight) >= minWeightThresh);
+        }
+
+        // 2. Mutate connection weights
         for (const conn of this.connections) {
             if (Math.random() < rate) {
                 conn.weight += Math.random() * strength - halfStrength;
@@ -247,26 +411,84 @@ class SparseNetwork {
             }
         }
 
-        // 2. Mutate biases
+        // 3. Mutate biases
         for (let i = this.numInputs; i < this.totalNodes; i++) {
             if (Math.random() < rate) {
                 this.biases[i] += Math.random() * strength - halfStrength;
             }
         }
 
-        // 3. Mutate topology: add new connection
+        // 4. Progressive Pruning Pressure (Scales up as complexity nears maxComplexity)
+        if (maxC !== null && maxC > 0) {
+            const currentC = this.getComplexity();
+            const congestionRatio = Math.min(1.0, currentC / maxC);
+            const pressureMultiplier = 1.0 + 3.0 * Math.pow(congestionRatio, 2);
+
+            const pruneConnRate = (options.basePruneConnRate || 0.03) * pressureMultiplier;
+            const pruneNodeRate = (options.basePruneNodeRate || 0.01) * pressureMultiplier;
+
+            // Stochastic connection pruning
+            if (this.connections.length > 1 && Math.random() < pruneConnRate) {
+                this.pruneWeakestConnection();
+            }
+
+            // Stochastic hidden node pruning
+            if (this.numHidden > 0 && Math.random() < pruneNodeRate) {
+                const hiddenStart = this.numInputs + this.numOutputs;
+                const randHidden = hiddenStart + Math.floor(Math.random() * this.numHidden);
+                this.pruneNode(randHidden);
+            }
+        }
+
+        // 5. Mutate topology: Add new connection (with Competitive Replacement)
         if (Math.random() < addConnRate) {
+            if (maxC !== null && maxC > 0 && (this.getComplexity() + 0.10) > maxC) {
+                // Competitive Replacement: Prune weakest existing connection to pay budget
+                this.pruneWeakestConnection();
+            }
+
             const randSrc = Math.floor(Math.random() * this.totalNodes);
             // Target cannot be an input node
             const randTgt = this.numInputs + Math.floor(Math.random() * (this.totalNodes - this.numInputs));
             this.addConnection(randSrc, randTgt, Math.random() * 2 - 1);
         }
 
-        // 4. Mutate topology: add new node (split link)
+        // 6. Mutate topology: Add new node (with Competitive Replacement)
         if (Math.random() < addNodeRate) {
-            this.addNode();
+            if (maxC !== null && maxC > 0 && (this.getComplexity() + 0.45) > maxC) {
+                if (this.numHidden > 0) {
+                    // Prune least connected hidden node
+                    const hiddenStart = this.numInputs + this.numOutputs;
+                    let lowestNode = hiddenStart;
+                    let minConnCount = Infinity;
+
+                    for (let h = hiddenStart; h < this.totalNodes; h++) {
+                        const count = this.connections.filter(c => c.src === h || c.tgt === h).length;
+                        if (count < minConnCount) {
+                            minConnCount = count;
+                            lowestNode = h;
+                        }
+                    }
+                    this.pruneNode(lowestNode);
+                } else {
+                    // Prune connections to pay budget
+                    this.pruneWeakestConnection();
+                    this.pruneWeakestConnection();
+                }
+            }
+
+            this.addNode(true);
         }
 
+        // 7. Vestigial Dead-End Compaction
+        this.cleanupVestigial();
+
+        // 8. Enforce final strict complexity cap
+        if (maxC !== null && maxC > 0) {
+            this.enforceComplexityCap(maxC);
+        }
+
+        // 9. Recompile flat arrays
         this.compile();
     }
 
@@ -296,6 +518,9 @@ class SparseNetwork {
             name: this.name,
             inputLabels: this.inputLabels ? [...this.inputLabels] : null,
             outputLabels: this.outputLabels ? [...this.outputLabels] : null,
+            maxComplexity: this.maxComplexity,
+            weightDecayRate: this.weightDecayRate,
+            minWeightThreshold: this.minWeightThreshold,
             initialConnectivity: 0
         });
         cloneNet.totalNodes = this.totalNodes;
@@ -339,6 +564,9 @@ class SparseNetwork {
             numOutputs: this.numOutputs,
             numHidden: this.numHidden,
             totalNodes: this.totalNodes,
+            maxComplexity: this.maxComplexity,
+            weightDecayRate: this.weightDecayRate,
+            minWeightThreshold: this.minWeightThreshold,
             connections: this.connections,
             biases: Array.from(this.biases.subarray(0, this.totalNodes)),
         };
@@ -358,6 +586,9 @@ class SparseNetwork {
         this.numOutputs = obj.numOutputs;
         this.numHidden = obj.numHidden || 0;
         this.totalNodes = obj.totalNodes || (this.numInputs + this.numOutputs + this.numHidden);
+        this.maxComplexity = obj.maxComplexity !== undefined ? obj.maxComplexity : this.maxComplexity;
+        this.weightDecayRate = obj.weightDecayRate !== undefined ? obj.weightDecayRate : this.weightDecayRate;
+        this.minWeightThreshold = obj.minWeightThreshold !== undefined ? obj.minWeightThreshold : this.minWeightThreshold;
         this.connections = obj.connections || [];
 
         this.biases = new Float32Array(Math.max(32, this.totalNodes * 2));

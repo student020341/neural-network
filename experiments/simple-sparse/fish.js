@@ -90,6 +90,7 @@ class TurnFish {
                 numOutputs: this.outputs.length,
                 initialHidden: 4,
                 initialConnectivity: 0.45,
+                maxComplexity: 5.5,
                 inputLabels: [
                     "Food Angle", "Food Dist", "Food Nutrition",
                     "Crab Angle", "Crab Dist",

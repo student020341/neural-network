@@ -91,6 +91,7 @@ class PredatorFish {
                 numOutputs: this.outputs.length,
                 initialHidden: 5,
                 initialConnectivity: 0.55,
+                maxComplexity: 5.5,
                 inputLabels: [
                     "Prey Angle", "Prey Dist",
                     "Jelly Angle", "Jelly Dist",

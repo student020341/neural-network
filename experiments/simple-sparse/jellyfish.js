@@ -91,6 +91,7 @@ class Jellyfish {
                 numOutputs: this.outputs.length,
                 initialHidden: 4,
                 initialConnectivity: 0.5,
+                maxComplexity: 5.5,
                 inputLabels: [
                     "Ceiling Dist", "Floor Dist",
                     "Left Wall", "Right Wall",
