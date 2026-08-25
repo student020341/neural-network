@@ -324,6 +324,9 @@ class BrainVisualizer {
         // Global View Mode Select
         this.viewSelect.addEventListener("change", (e) => {
             this.globalViewMode = e.target.value;
+            for (const p of this.providers) {
+                p.viewMode = e.target.value;
+            }
         });
 
         // Search Input & Tag Chips
@@ -1533,7 +1536,8 @@ class BrainVisualizer {
     }
 
     _drawEEGHeatmapMode(ctx, brain, layout, filterData) {
-        const { topPadding, width: cardW } = layout;
+        const { topPadding } = layout;
+        const cardW = layout.netWidth || layout.width;
         const isDense = brain instanceof DenseNetwork || Boolean(brain.layerSizes);
 
         const numInputs = isDense ? (brain.layerSizes[0] || 0) : (brain.numInputs || 0);

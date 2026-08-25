@@ -266,6 +266,11 @@ class Crab {
         this.outputs = this.brain.activate(this.inputs);
     }
 
+    performScheduledThink(foods = [], carcasses = [], crabs = [], predators = [], jellies = []) {
+        this.needsThink = false;
+        this.think(foods, carcasses, crabs, predators, jellies);
+    }
+
     /**
      * @param {number} dt 
      * @param {Array<Food>} foods 
@@ -300,18 +305,18 @@ class Crab {
             return;
         }
 
-        // --- Progressive Elder Titan Aging ---
-        // Elders gain +45% duel power and 55% faster pincer cooldowns, but burn +45% more hunger!
+        const [crawl, munch, pincer] = this.outputs;
+        const crawlExertion = Math.abs(crawl - 0.5) * 2;
+
+        // Elder Titan Aging Dynamics
         const ageFactor = clamp(this.age / 120, 0, 1);
         const ageDuelPowerMultiplier = 1.0 + (ageFactor * 0.45);
         const ageCooldownDuration = lerp(1.0, 0.45, ageFactor);
         const ageMetabolicMultiplier = 1.0 + (ageFactor * 0.45);
 
-        // Dynamic Metabolism: Idling consumes less hunger, but elder crabs have massive appetite!
-        const [crawl, munch, pincer] = this.outputs;
-        const crawlExertion = Math.abs(crawl - 0.5) * 2;
-        const baseIdleBurn = 0.012;
-        const activeOutputBurn = crawlExertion * 0.018 + (this.mouthOpen ? 0.008 : 0) + (this.pincerActive ? 0.012 : 0);
+        // Dynamic Metabolism: High exertion increases hunger burn
+        const baseIdleBurn = 0.009;
+        const activeOutputBurn = (crawlExertion * 0.016 + (munch > 0.6 ? 0.014 : 0) + (pincer > 0.5 ? 0.022 : 0)) * (this.size / 15);
         this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
 
         if (this.hunger >= 1.0) {
@@ -319,14 +324,13 @@ class Crab {
             return;
         }
 
-        // Dissipate gluttony bloat
+        // Slowly digest gluttony bloat
         if (this.gluttony > 0) {
-            this.gluttony = Math.max(0, this.gluttony - 0.035 * dt);
+            this.gluttony = Math.max(0, this.gluttony - 0.03 * dt);
         }
 
         // Edge entry
         if (this.enteringScreen) {
-            const wallH = this.bounds.h * 0.25;
             this.s += this.entryDir * 50 * dt;
             const pos = this._sToPos(this.s);
             this.x = pos.x; this.y = pos.y;
@@ -336,11 +340,11 @@ class Crab {
             return;
         }
 
-        // Think step
+        // Think step (Enqueues for frame-budgeted scheduler)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.think(foods, carcasses, crabs, predators, jellies);
+            this.needsThink = true;
         }
 
         // --- Muscle Strain & Fatigue Mechanics ---

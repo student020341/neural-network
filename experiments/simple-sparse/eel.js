@@ -212,6 +212,11 @@ class RibbonEel {
         this.outputs = this.brain.activate(this.inputs);
     }
 
+    performScheduledThink(carcasses = [], jellies = [], predators = []) {
+        this.needsThink = false;
+        this.think(carcasses, jellies, predators);
+    }
+
     /**
      * @param {number} dt 
      * @param {Array<Carcass>} carcasses 
@@ -236,10 +241,10 @@ class RibbonEel {
         // Dynamic Metabolism: Reduced hunger when idling, higher when actively slithering/turning
         const [steer, slither, gulp] = this.outputs;
         const steerExertion = Math.abs(steer - 0.5) * 2;
-        const baseIdleBurn = 0.012;
-        const activeOutputBurn = (slither * 0.024 + steerExertion * 0.008 + (gulp > 0.5 ? 0.004 : 0)) * sizeFactor;
-        
+        const baseIdleBurn = 0.008;
+        const activeOutputBurn = (slither * 0.022 + steerExertion * 0.008 + (gulp > 0.5 ? 0.004 : 0)) * sizeFactor;
         this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
+
         if (this.hunger >= 1.0) {
             this.dead = true;
             return;
@@ -254,11 +259,11 @@ class RibbonEel {
             return;
         }
 
-        // Think step
+        // Think step (Enqueues for frame-budgeted scheduler)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.think(carcasses, jellies, predators);
+            this.needsThink = true;
         }
 
         this.mouthOpen = gulp > 0.5;
@@ -314,40 +319,44 @@ class RibbonEel {
 
         // Update Serpentine S-Curve Spine Segments
         this.spine[0] = { x: this.x, y: this.y };
+        const sinA = Math.sin(this.angle);
+        const cosA = Math.cos(this.angle);
+
         for (let i = 1; i < this.numSegments; i++) {
             const prev = this.spine[i - 1];
             const curr = this.spine[i];
             const dx = prev.x - curr.x;
             const dy = prev.y - curr.y;
-            const d = Math.hypot(dx, dy) || 0.001;
-            const targetDist = this.segmentSpacing;
+            const dSq = dx * dx + dy * dy;
+            const invD = dSq > 0.0001 ? this.segmentSpacing / Math.sqrt(dSq) : 0;
             
             // Constrain distance between segments
-            curr.x = prev.x - (dx / d) * targetDist;
-            curr.y = prev.y - (dy / d) * targetDist;
+            curr.x = prev.x - dx * invD;
+            curr.y = prev.y - dy * invD;
 
             // Add S-curve lateral wave undulation
-            const lateralAngle = this.angle + Math.PI / 2;
             const waveOffset = Math.sin(this.age * 10 - i * 0.8) * (this.size * 0.07) * (i / this.numSegments);
-            curr.x += Math.cos(lateralAngle) * waveOffset;
-            curr.y += Math.sin(lateralAngle) * waveOffset;
+            curr.x += -sinA * waveOffset;
+            curr.y += cosA * waveOffset;
         }
 
-        // Apply Hydrodynamic Fluid Slipstream onto Nearby Jellyfish (Size-Scaled Current)
-        const draftRadius = 75 + this.size * 1.6;
-        const draftRadiusSq = draftRadius * draftRadius;
-        const draftStrength = 0.40 * Math.pow(sizeFactor, 1.4);
-        for (let i = 0; i < jellies.length; i++) {
-            const j = jellies[i];
-            if (j.dead) continue;
-            const dx = j.x - this.x;
-            const dy = j.y - this.y;
-            if (Math.abs(dx) > draftRadius || Math.abs(dy) > draftRadius) continue;
-            const dSq = dx * dx + dy * dy;
-            if (dSq < draftRadiusSq) {
-                const d = Math.sqrt(dSq);
-                const draftFactor = (1 - (d / draftRadius)) * draftStrength;
-                j.applyCurrent(this.vx * draftFactor, (this.vy - 16 * sizeFactor) * draftFactor, dt);
+        // Apply Hydrodynamic Fluid Slipstream onto Nearby Jellyfish (Only when moving)
+        if (Math.abs(this.vx) > 5 || Math.abs(this.vy) > 5) {
+            const draftRadius = 75 + this.size * 1.6;
+            const draftRadiusSq = draftRadius * draftRadius;
+            const draftStrength = 0.40 * Math.pow(sizeFactor, 1.4);
+            for (let i = 0; i < jellies.length; i++) {
+                const j = jellies[i];
+                if (j.dead) continue;
+                const dx = j.x - this.x;
+                const dy = j.y - this.y;
+                if (Math.abs(dx) > draftRadius || Math.abs(dy) > draftRadius) continue;
+                const dSq = dx * dx + dy * dy;
+                if (dSq < draftRadiusSq) {
+                    const d = Math.sqrt(dSq);
+                    const draftFactor = (1 - (d / draftRadius)) * draftStrength;
+                    j.applyCurrent(this.vx * draftFactor, (this.vy - 16 * sizeFactor) * draftFactor, dt);
+                }
             }
         }
     }

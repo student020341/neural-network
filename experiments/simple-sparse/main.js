@@ -75,6 +75,19 @@ let predatorKillCount = 0;
 let foodSpawnTimer = 0;
 let creatureSpawnTimer = 0;
 
+// Cached DOM HUD element references & throttled timer (~6 Hz)
+const domHUD = {
+    popTotal: document.getElementById("pop-total"),
+    cntFish: document.getElementById("cnt-fish"),
+    cntCrabs: document.getElementById("cnt-crabs"),
+    cntJellies: document.getElementById("cnt-jellies"),
+    cntPredators: document.getElementById("cnt-predators"),
+    cntEels: document.getElementById("cnt-eels"),
+    cntFood: document.getElementById("cnt-food"),
+    cntKills: document.getElementById("cnt-kills"),
+};
+let hudUpdateTimer = 0;
+
 // Helper to record champion brains with adaptive score decay & stagnation tracking
 function recordDeath(creature) {
     const species = creature.species;
@@ -241,7 +254,7 @@ function playChampionHighlights(species, tier) {
     }
 
     const label = `🏆 Champion ${species} [${tier.toUpperCase()}]`;
-    visualizer.inspect(label, previewEntity || { brain }, () => brain, "full", true);
+    visualizer.inspect(label, previewEntity || { brain }, () => brain, null, true);
 
     if (replayBanner) {
         replayBanner.style.display = "block";
@@ -466,7 +479,47 @@ const logic = (dt) => {
         if (c.state === "dead") carcasses.splice(i, 1);
     }
 
-    // E. Update TurnFish
+    // E. Scheduled Brain Think Passes with Frame Quota (Max 16 neural evaluations per frame)
+    let brainTicksLeft = 16;
+
+    for (let i = 0; i < turnFishes.length && brainTicksLeft > 0; i++) {
+        const f = turnFishes[i];
+        if (f.needsThink) {
+            f.performScheduledThink(foods, crabs, predators, jellies);
+            brainTicksLeft--;
+        }
+    }
+    for (let i = 0; i < crabs.length && brainTicksLeft > 0; i++) {
+        const c = crabs[i];
+        if (c.needsThink) {
+            c.performScheduledThink(foods, carcasses, crabs, predators, jellies);
+            brainTicksLeft--;
+        }
+    }
+    for (let i = 0; i < jellies.length && brainTicksLeft > 0; i++) {
+        const j = jellies[i];
+        if (j.needsThink) {
+            j.performScheduledThink(foods, jellies);
+            brainTicksLeft--;
+        }
+    }
+    for (let i = 0; i < predators.length && brainTicksLeft > 0; i++) {
+        const p = predators[i];
+        if (p.needsThink) {
+            p.performScheduledThink(turnFishes, crabs, jellies, predators);
+            brainTicksLeft--;
+        }
+    }
+    for (let i = 0; i < eels.length && brainTicksLeft > 0; i++) {
+        const e = eels[i];
+        if (e.needsThink) {
+            e.performScheduledThink(carcasses, jellies, predators);
+            brainTicksLeft--;
+        }
+    }
+
+    // F. Update Physics and Actions (Full 60 FPS)
+    // TurnFish
     for (let i = turnFishes.length - 1; i >= 0; i--) {
         const f = turnFishes[i];
         f.act(dt, foods, crabs, predators, jellies);
@@ -476,11 +529,10 @@ const logic = (dt) => {
         }
     }
 
-    // F. Update Crabs
+    // Crabs
     for (let i = crabs.length - 1; i >= 0; i--) {
         const c = crabs[i];
         c.act(dt, foods, carcasses, crabs, predators, jellies, (crab, tossedJelly) => {
-            // Spawn a food pellet at the location the jellyfish was tossed from!
             foods.push(new Food(tossedJelly.x, tossedJelly.y, bounds));
         });
         if (c.dead) {
@@ -489,7 +541,7 @@ const logic = (dt) => {
         }
     }
 
-    // G. Update Jellyfish
+    // Jellyfish
     for (let i = jellies.length - 1; i >= 0; i--) {
         const j = jellies[i];
         j.act(dt, foods, jellies);
@@ -497,7 +549,6 @@ const logic = (dt) => {
             recordDeath(j);
 
             // Cascading Fission on Death:
-            // Large -> 2 Medium, Medium -> 2 Small
             const isFissionExplorer = Math.random() < 0.20;
             if (j.sizeTier === "large" && jellies.length + 1 < CAPS.Jellyfish * 1.5) {
                 j.split = true;
@@ -505,7 +556,7 @@ const logic = (dt) => {
                 for (let k = 0; k < 2; k++) {
                     const offset = k === 0 ? -16 : 16;
                     const child = new Jellyfish(clamp(j.x + offset, 25, bounds.w - 25), j.y, bounds, medTemplate, randRange(34, 44));
-                    child.hunger = 0.20; // 80% fullness
+                    child.hunger = 0.20;
                     child.vx = offset * 2.5;
                     child.invulnerableTimer = 2.0;
                     jellies.push(child);
@@ -516,7 +567,7 @@ const logic = (dt) => {
                 for (let k = 0; k < 2; k++) {
                     const offset = k === 0 ? -12 : 12;
                     const child = new Jellyfish(clamp(j.x + offset, 20, bounds.w - 20), j.y, bounds, smallTemplate, randRange(22, 28));
-                    child.hunger = 0.20; // 80% fullness
+                    child.hunger = 0.20;
                     child.vx = offset * 2.5;
                     child.invulnerableTimer = 2.0;
                     jellies.push(child);
@@ -527,7 +578,7 @@ const logic = (dt) => {
         }
     }
 
-    // H. Update Ribbon Eels (Mid-water carcass scavengers & jelly slipstream drivers)
+    // Ribbon Eels
     for (let i = eels.length - 1; i >= 0; i--) {
         const e = eels[i];
         e.act(dt, carcasses, jellies, predators);
@@ -537,7 +588,7 @@ const logic = (dt) => {
         }
     }
 
-    // I. Update Predator Fish (Can also hunt smaller predators)
+    // Predator Fish
     for (let i = predators.length - 1; i >= 0; i--) {
         const p = predators[i];
         p.act(dt, turnFishes, crabs, jellies, predators, 
@@ -545,7 +596,6 @@ const logic = (dt) => {
                 predatorKillCount++;
             },
             (explodedPredator) => {
-                // Burst into scattered food pellets
                 const numPellets = Math.floor(randRange(10, 16));
                 for (let k = 0; k < numPellets; k++) {
                     const ang = (k / numPellets) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
@@ -562,30 +612,19 @@ const logic = (dt) => {
         }
     }
 
-    // J. Telemetry HUD Counters
-    const popTotal = document.getElementById("pop-total");
-    if (popTotal) popTotal.textContent = `${totalCreatures}/${CAPS.Global}`;
-
-    const cntFish = document.getElementById("cnt-fish");
-    if (cntFish) cntFish.textContent = turnFishes.length;
-
-    const cntCrabs = document.getElementById("cnt-crabs");
-    if (cntCrabs) cntCrabs.textContent = crabs.length;
-
-    const cntJellies = document.getElementById("cnt-jellies");
-    if (cntJellies) cntJellies.textContent = jellies.length;
-
-    const cntPredators = document.getElementById("cnt-predators");
-    if (cntPredators) cntPredators.textContent = predators.length;
-
-    const cntEels = document.getElementById("cnt-eels");
-    if (cntEels) cntEels.textContent = eels.length;
-
-    const cntFood = document.getElementById("cnt-food");
-    if (cntFood) cntFood.textContent = foods.length;
-
-    const cntKills = document.getElementById("cnt-kills");
-    if (cntKills) cntKills.textContent = predatorKillCount;
+    // G. Throttled Telemetry HUD Counters (~6 Hz to avoid DOM layout thrashing)
+    hudUpdateTimer += dt;
+    if (hudUpdateTimer >= 0.16) {
+        hudUpdateTimer = 0;
+        if (domHUD.popTotal) domHUD.popTotal.textContent = `${totalCreatures}/${CAPS.Global}`;
+        if (domHUD.cntFish) domHUD.cntFish.textContent = turnFishes.length;
+        if (domHUD.cntCrabs) domHUD.cntCrabs.textContent = crabs.length;
+        if (domHUD.cntJellies) domHUD.cntJellies.textContent = jellies.length;
+        if (domHUD.cntPredators) domHUD.cntPredators.textContent = predators.length;
+        if (domHUD.cntEels) domHUD.cntEels.textContent = eels.length;
+        if (domHUD.cntFood) domHUD.cntFood.textContent = foods.length;
+        if (domHUD.cntKills) domHUD.cntKills.textContent = predatorKillCount;
+    }
 };
 
 // 7. Layered Render Step

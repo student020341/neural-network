@@ -262,6 +262,11 @@ class TurnFish {
         this.outputs = this.brain.activate(this.inputs);
     }
 
+    performScheduledThink(foods = [], crabs = [], predators = [], jellies = []) {
+        this.needsThink = false;
+        this.think(foods, crabs, predators, jellies);
+    }
+
     /**
      * @param {number} dt 
      * @param {Array<Food>} foods 
@@ -309,11 +314,11 @@ class TurnFish {
             return;
         }
 
-        // Brain Think Step
+        // Brain Think Step (Enqueues for frame-budgeted scheduler)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.think(foods, crabs, predators, jellies);
+            this.needsThink = true;
         }
 
         this.mouthOpen = gulp > 0.5;

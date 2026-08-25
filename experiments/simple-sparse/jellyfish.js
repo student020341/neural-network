@@ -234,6 +234,11 @@ class Jellyfish {
         this.outputs = this.brain.activate(this.inputs);
     }
 
+    performScheduledThink(foods = [], jellies = []) {
+        this.needsThink = false;
+        this.think(foods, jellies);
+    }
+
     /**
      * @param {number} dt 
      * @param {Array<Food>} foods 
@@ -329,11 +334,11 @@ class Jellyfish {
             }
         }
 
-        // Think step
+        // Think step (Enqueues for frame-budgeted scheduler)
         this.acc += dt;
         if (this.acc >= this.accMax) {
             this.acc = 0;
-            this.think(foods, jellies);
+            this.needsThink = true;
         }
 
         // --- Water Jet Repel Dueling Mechanic ---

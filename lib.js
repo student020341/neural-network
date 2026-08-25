@@ -25,7 +25,8 @@ let currentOffsetX = 0;
 let currentOffsetY = 0;
 
 const applyTransform = () => {
-    const dpr = window.devicePixelRatio || 1;
+    // Cap devicePixelRatio to 1.5 on high-DPI mobile devices to prevent GPU rasterization fill-rate bottlenecks
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const cw = window.innerWidth;
     const ch = window.innerHeight;
 
