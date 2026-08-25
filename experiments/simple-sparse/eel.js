@@ -8,12 +8,13 @@ class RibbonEel {
      * @param {SparseNetwork} [inheritedBrain] 
      * @param {number} [customSize]
      */
-    constructor(x, y, bounds, inheritedBrain = null, customSize = null) {
+    constructor(x, y, bounds, inheritedBrain = null, customSize = null, stagnation = 0) {
         this.species = "Eel";
         this.x = x;
         this.y = y;
         this.bounds = bounds;
         this.name = uid("Eel");
+        this.stagnation = stagnation || 0;
 
         // Variable Size (Range 20 to 38, baseline 28)
         this.size = customSize || randRange(20, 38);
@@ -75,7 +76,12 @@ class RibbonEel {
         if (inheritedBrain) {
             this.brain = inheritedBrain.clone();
             this.brain.name = this.name;
-            this.brain.mutate(0.12, { strength: 0.25, addConnectionRate: 0.04, addNodeRate: 0.015 });
+            const temp = 1.0 + Math.min(2.5, this.stagnation * 0.04);
+            this.brain.mutate(0.12 * temp, {
+                strength: 0.25 * (1.0 + Math.min(1.5, this.stagnation * 0.03)),
+                addConnectionRate: 0.04 * (1.0 + Math.min(2.0, this.stagnation * 0.03)),
+                addNodeRate: 0.015 * (1.0 + Math.min(2.0, this.stagnation * 0.03))
+            });
         } else {
             this.brain = new SparseNetwork({
                 name: this.name,
@@ -205,13 +211,18 @@ class RibbonEel {
         // Size factor (Range ~0.7 to 1.35)
         const sizeFactor = this.size / 28;
 
+        // Progressive Age Progression: Elders slow down slightly (-20%) but burn 25% less hunger!
+        const ageFactor = clamp(this.age / 130, 0, 1);
+        const ageMetabolicMultiplier = 1.0 - (ageFactor * 0.25);
+        const ageSpeedMultiplier = 1.0 - (ageFactor * 0.20);
+
         // Dynamic Metabolism: Reduced hunger when idling, higher when actively slithering/turning
         const [steer, slither, gulp] = this.outputs;
         const steerExertion = Math.abs(steer - 0.5) * 2;
         const baseIdleBurn = 0.012;
         const activeOutputBurn = (slither * 0.024 + steerExertion * 0.008 + (gulp > 0.5 ? 0.004 : 0)) * sizeFactor;
         
-        this.hunger += (baseIdleBurn + activeOutputBurn) * dt;
+        this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
         if (this.hunger >= 1.0) {
             this.dead = true;
             return;
@@ -250,7 +261,7 @@ class RibbonEel {
         }
 
         // Turning
-        const turnIntensity = this.maxTurnSpeed * dt;
+        const turnIntensity = this.maxTurnSpeed * (1.0 - ageFactor * 0.15) * dt;
         if (steer < 0.4) {
             this.angle -= turnIntensity * ((0.4 - steer) / 0.4);
         } else if (steer > 0.6) {
@@ -260,13 +271,18 @@ class RibbonEel {
         if (this.angle < 0) this.angle += Math.PI * 2;
         if (this.angle >= Math.PI * 2) this.angle -= Math.PI * 2;
 
-        // Slither Forward Speed
-        const speed = slither * this.maxSpeed;
-        this.vx = Math.cos(this.angle) * speed;
-        this.vy = Math.sin(this.angle) * speed;
+        // Forward slithering motion
+        if (slither > 0.05) {
+            const speed = slither * this.maxSpeed * ageSpeedMultiplier;
+            this.vx = Math.cos(this.angle) * speed;
+            this.vy = Math.sin(this.angle) * speed;
 
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+        } else {
+            this.vx = 0;
+            this.vy = 0;
+        }
 
         const half = this.size * 0.35;
         this.x = clamp(this.x, half, this.bounds.w - half);

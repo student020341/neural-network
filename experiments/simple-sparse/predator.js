@@ -8,12 +8,13 @@ class PredatorFish {
      * @param {SparseNetwork} [inheritedBrain] 
      * @param {number} [customSize]
      */
-    constructor(x, y, bounds, inheritedBrain = null, customSize = null) {
+    constructor(x, y, bounds, inheritedBrain = null, customSize = null, stagnation = 0) {
         this.species = "Predator";
         this.x = x;
         this.y = y;
         this.bounds = bounds;
         this.name = uid("Predator");
+        this.stagnation = stagnation || 0;
 
         // Variable Size & Trade-offs (Range 24 to 68, big circular silhouette)
         this.size = customSize || randRange(24, 68);
@@ -83,7 +84,12 @@ class PredatorFish {
         if (inheritedBrain) {
             this.brain = inheritedBrain.clone();
             this.brain.name = this.name;
-            this.brain.mutate(0.12, { strength: 0.25, addConnectionRate: 0.04, addNodeRate: 0.015 });
+            const temp = 1.0 + Math.min(2.5, this.stagnation * 0.04);
+            this.brain.mutate(0.12 * temp, {
+                strength: 0.25 * (1.0 + Math.min(1.5, this.stagnation * 0.03)),
+                addConnectionRate: 0.04 * (1.0 + Math.min(2.0, this.stagnation * 0.03)),
+                addNodeRate: 0.015 * (1.0 + Math.min(2.0, this.stagnation * 0.03))
+            });
         } else {
             this.brain = new SparseNetwork({
                 name: this.name,
@@ -232,10 +238,16 @@ class PredatorFish {
         const [steer, thrust, swimUp, gape] = this.outputs;
         const steerExertion = Math.abs(steer - 0.5) * 2;
 
-        // Dynamic Metabolism: Low base idle burn + active output energy drain
+        // Progressive Age Progression: Elders slow down slightly (-25%) but burn 30% less basal hunger!
+        const ageFactor = clamp(this.age / 140, 0, 1);
+        const ageMetabolicMultiplier = 1.0 - (ageFactor * 0.30);
+        const ageSpeedMultiplier = 1.0 - (ageFactor * 0.25);
+        const ageTurnMultiplier = 1.0 - (ageFactor * 0.20);
+
+        // Dynamic Metabolism: Low base idle burn + active output energy drain (scaled by age)
         const baseIdleBurn = 0.014;
         const activeOutputBurn = (thrust * 0.024 + swimUp * 0.026 + steerExertion * 0.008 + (gape > 0.5 ? 0.006 : 0)) * sizeFactor;
-        this.hunger += (baseIdleBurn + activeOutputBurn) * dt;
+        this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
 
         if (this.hunger >= 1.0) {
             this.dead = true;
@@ -361,8 +373,8 @@ class PredatorFish {
 
         if (this.dead) return;
 
-        // Turning
-        const turnIntensity = this.maxTurnSpeed * dt;
+        // Turning (scaled by age)
+        const turnIntensity = this.maxTurnSpeed * ageTurnMultiplier * dt;
         if (steer < 0.4) {
             this.angle -= turnIntensity * ((0.4 - steer) / 0.4);
         } else if (steer > 0.6) {
@@ -373,7 +385,7 @@ class PredatorFish {
         if (this.angle >= Math.PI * 2) this.angle -= Math.PI * 2;
 
         // Forward Thrust + Upward Swim Lift - Gravity Sink
-        const forwardSpeed = thrust * this.maxSpeed;
+        const forwardSpeed = thrust * this.maxSpeed * ageSpeedMultiplier;
         this.vx = Math.cos(this.angle) * forwardSpeed;
 
         const liftForce = swimUp * (95 + (this.size / 35) * 15);

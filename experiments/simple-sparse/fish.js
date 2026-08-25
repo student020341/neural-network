@@ -8,12 +8,13 @@ class TurnFish {
      * @param {SparseNetwork} [inheritedBrain] 
      * @param {number} [customSize]
      */
-    constructor(x, y, bounds, inheritedBrain = null, customSize = null) {
+    constructor(x, y, bounds, inheritedBrain = null, customSize = null, stagnation = 0) {
         this.species = "TurnFish";
         this.x = x;
         this.y = y;
         this.bounds = bounds;
         this.name = uid("TurnFish");
+        this.stagnation = stagnation || 0;
 
         // Variable Size & Trade-offs (Range 12 to 22, baseline 16)
         this.size = customSize || randRange(12, 22);
@@ -62,13 +63,7 @@ class TurnFish {
         this.nearestPredator = null;
         this.nearestJelly = null;
 
-        // 13 Sensory Inputs:
-        // 0: Food Angle, 1: Food Dist, 2: Food Nutrition
-        // 3: Crab Angle, 4: Crab Dist
-        // 5: Wall L, 6: Wall C, 7: Wall R
-        // 8: Hunger, 9: Gluttony
-        // 10: Pred Threat, 11: Jelly Sanctuary
-        // 12: Energy Drain
+        // 13 Sensory Inputs
         this.inputs = new Array(13).fill(0);
 
         // 4 Outputs: Steer, Torque, Thrust, Gulp Mouth
@@ -82,7 +77,12 @@ class TurnFish {
         if (inheritedBrain) {
             this.brain = inheritedBrain.clone();
             this.brain.name = this.name;
-            this.brain.mutate(0.12, { strength: 0.25, addConnectionRate: 0.04, addNodeRate: 0.015 });
+            const temp = 1.0 + Math.min(2.5, this.stagnation * 0.04);
+            this.brain.mutate(0.12 * temp, {
+                strength: 0.25 * (1.0 + Math.min(1.5, this.stagnation * 0.03)),
+                addConnectionRate: 0.04 * (1.0 + Math.min(2.0, this.stagnation * 0.03)),
+                addNodeRate: 0.015 * (1.0 + Math.min(2.0, this.stagnation * 0.03))
+            });
         } else {
             this.brain = new SparseNetwork({
                 name: this.name,
@@ -257,10 +257,16 @@ class TurnFish {
         const [steer, torque, thrust, gulp] = this.outputs;
         const steerExertion = Math.abs(steer - 0.5) * 2;
 
-        // Dynamic Metabolism: Idling consumes 60% less hunger than full-throttle swimming!
+        // Progressive Age Progression: Elders slow down slightly (-25%) but burn 30% less hunger!
+        const ageFactor = clamp(this.age / 120, 0, 1);
+        const ageMetabolicMultiplier = 1.0 - (ageFactor * 0.30);
+        const ageSpeedMultiplier = 1.0 - (ageFactor * 0.25);
+        const ageTurnMultiplier = 1.0 - (ageFactor * 0.20);
+
+        // Dynamic Metabolism: Idling consumes 60% less hunger, elder fish consume 30% less basal hunger!
         const baseIdleBurn = 0.012;
         const activeOutputBurn = (thrust * 0.026 + steerExertion * 0.008 + (gulp > 0.5 ? 0.004 : 0));
-        this.hunger += (baseIdleBurn + activeOutputBurn) * dt;
+        this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
 
         if (this.hunger >= 1.0) {
             this.dead = true;
@@ -327,12 +333,12 @@ class TurnFish {
             }
         }
 
-        // Gluttony Consequence: Sinking weight inertia + speed reduction
-        this.maxSpeed = this.baseMaxSpeed * (1.0 - this.gluttony * 0.25);
+        // Gluttony Consequence: Sinking weight inertia + speed reduction (with Age Modifier)
+        this.maxSpeed = this.baseMaxSpeed * (1.0 - this.gluttony * 0.25) * ageSpeedMultiplier;
         this.y += this.gluttony * 36 * dt; // Heavy downward pull when full
 
         // Turn mechanics
-        const turnIntensity = torque * this.maxTurnSpeed * dt;
+        const turnIntensity = torque * this.maxTurnSpeed * ageTurnMultiplier * dt;
         if (steer < 0.4) {
             this.angle -= turnIntensity * ((0.4 - steer) / 0.4);
         } else if (steer > 0.6) {

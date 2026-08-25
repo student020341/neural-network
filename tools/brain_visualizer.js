@@ -981,7 +981,7 @@ class BrainVisualizer {
             ctx.translate(0, currentY);
 
             // Draw Card Container
-            this._drawCardBackground(ctx, p.label, layout.width, layout.height, mode);
+            this._drawCardBackground(ctx, p.label, layout.netWidth, layout.netHeight, mode);
 
             const cardView = {
                 viewLeft: viewLeft,
@@ -1008,9 +1008,9 @@ class BrainVisualizer {
                 }
             }
 
-            // Draw Real-time Creature Camera Viewport if entity is tracked
-            if (layout.entityWidth > 0) {
-                this._drawEntityCamera(ctx, p, layout);
+            // Draw Standalone Square Creature Camera Viewport Card next to the network view
+            if (layout.entityBoxSize > 0) {
+                this._drawEntityCamera(ctx, p, layout.netWidth + 12, 0, layout.entityBoxSize, layout.entityBoxSize);
             }
 
             ctx.restore();
@@ -1021,43 +1021,42 @@ class BrainVisualizer {
         ctx.restore();
     }
 
-    _drawEntityCamera(ctx, p, layout) {
-        const boxX = layout.width - layout.entityWidth + 8;
-        const boxY = 34;
-        const boxW = layout.entityWidth - 18;
-        const boxH = layout.height - 46;
-
+    _drawEntityCamera(ctx, p, boxX, boxY, boxW, boxH) {
         ctx.save();
 
-        // Outer Camera Container Frame
+        // Standalone Glassmorphic Camera Container Frame
         ctx.beginPath();
-        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
-        ctx.fillStyle = "rgba(10, 16, 26, 0.92)";
+        ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+        ctx.fillStyle = "rgba(10, 16, 26, 0.88)";
         ctx.fill();
         ctx.strokeStyle = p.isReplay ? "#f59e0b" : "#38bdf8";
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
         // Header Title Banner
-        ctx.font = "bold 9.5px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, sans-serif";
         ctx.fillStyle = p.isReplay ? "#fbbf24" : "#7dd3fc";
         ctx.textAlign = "left";
-        const badge = p.isReplay ? "🎞️ REPLAY" : "🔴 LIVE CAM";
-        ctx.fillText(badge, boxX + 8, boxY + 14);
+        const badge = p.isReplay ? "🎞️ REPLAY" : "🔴 LIVE VIEW";
+        ctx.fillText(badge, boxX + 10, boxY + 16);
 
-        // Viewport Clip
+        // Viewport Clip Area
+        const viewportTop = boxY + 22;
+        const viewportBottom = boxY + boxH - 28;
+        const viewportH = Math.max(20, viewportBottom - viewportTop);
+
         ctx.save();
         ctx.beginPath();
-        ctx.rect(boxX + 2, boxY + 18, boxW - 4, boxH - 34);
+        ctx.rect(boxX + 4, viewportTop, boxW - 8, viewportH);
         ctx.clip();
 
         // Subtle circular radar / depth guide
         const cx = boxX + boxW / 2;
-        const cy = boxY + 18 + (boxH - 34) / 2;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+        const cy = viewportTop + viewportH / 2;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+        ctx.arc(cx, cy, Math.min(34, (boxW - 16) / 2), 0, Math.PI * 2);
         ctx.stroke();
 
         // Draw Entity Centered
@@ -1077,13 +1076,21 @@ class BrainVisualizer {
         }
         ctx.restore();
 
-        // Footer Telemetry
-        ctx.font = "9px -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillStyle = "#94a3b8";
+        // Clean Numeric Multi-Line Footer Telemetry
+        ctx.font = "9.5px -apple-system, BlinkMacSystemFont, sans-serif";
         ctx.textAlign = "center";
+
+        // Line 1: Points & Fullness/Hunger
         const scoreVal = ent?.score !== undefined ? `Pts: ${ent.score}` : (ent?.size ? `S:${Math.round(ent.size)}` : "");
-        const hungerVal = ent?.hunger !== undefined ? ` • H:${Math.round(ent.hunger * 100)}%` : "";
-        ctx.fillText(`${scoreVal}${hungerVal}`, cx, boxY + boxH - 4);
+        const hungerVal = ent?.hunger !== undefined ? ` • H: ${Math.round(ent.hunger * 100)}%` : "";
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillText(`${scoreVal}${hungerVal}`, cx, boxY + boxH - 16);
+
+        // Line 2: Numeric Age & Physical Size
+        const ageVal = ent?.age !== undefined ? `Age: ${Math.floor(ent.age)}s` : "";
+        const sizeVal = ent?.size !== undefined ? ` • Sz: ${Math.round(ent.size)}` : "";
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(`${ageVal}${sizeVal}`, cx, boxY + boxH - 5);
 
         ctx.restore();
     }
@@ -1154,21 +1161,24 @@ class BrainVisualizer {
             height = Math.max(160, topPadding + maxNodesInCol * rowSpacing + bottomPadding);
         }
 
-        // Entity Viewport Space on right of card
+        // Standalone Entity Viewport Cube next to the network view
         const hasEntity = entity && (typeof entity.draw === "function" || typeof entity.drawPreview === "function");
-        const entityWidth = hasEntity ? 146 : 0;
-        width += entityWidth;
+        const entityBoxSize = hasEntity ? Math.max(140, Math.min(220, height)) : 0;
+        const totalRowWidth = width + (hasEntity ? entityBoxSize + 12 : 0);
+        const totalRowHeight = Math.max(height, entityBoxSize);
 
         return {
-            width,
-            height,
+            netWidth: width,
+            netHeight: height,
+            entityBoxSize: entityBoxSize,
+            width: totalRowWidth,
+            height: totalRowHeight,
             leftMargin,
             rightMargin,
             colSpacing,
             rowSpacing,
             topPadding,
-            maxNodesInCol,
-            entityWidth
+            maxNodesInCol
         };
     }
 

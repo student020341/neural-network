@@ -8,10 +8,11 @@ class Crab {
      * @param {SparseNetwork} [inheritedBrain] 
      * @param {number} [customSize]
      */
-    constructor(x, y, bounds, inheritedBrain = null, customSize = null) {
+    constructor(x, y, bounds, inheritedBrain = null, customSize = null, stagnation = 0) {
         this.species = "Crab";
         this.bounds = bounds;
         this.name = uid("Crab");
+        this.stagnation = stagnation || 0;
 
         // Variable Size & Trade-offs (Range 11 to 19, baseline 15)
         this.size = customSize || randRange(11, 19);
@@ -91,7 +92,12 @@ class Crab {
         if (inheritedBrain) {
             this.brain = inheritedBrain.clone();
             this.brain.name = this.name;
-            this.brain.mutate(0.12, { strength: 0.25, addConnectionRate: 0.04, addNodeRate: 0.015 });
+            const temp = 1.0 + Math.min(2.5, this.stagnation * 0.04);
+            this.brain.mutate(0.12 * temp, {
+                strength: 0.25 * (1.0 + Math.min(1.5, this.stagnation * 0.03)),
+                addConnectionRate: 0.04 * (1.0 + Math.min(2.0, this.stagnation * 0.03)),
+                addNodeRate: 0.015 * (1.0 + Math.min(2.0, this.stagnation * 0.03))
+            });
         } else {
             this.brain = new SparseNetwork({
                 name: this.name,
@@ -284,12 +290,19 @@ class Crab {
             return;
         }
 
-        // Dynamic Metabolism: Idling consumes 60% less hunger
+        // --- Progressive Elder Titan Aging ---
+        // Elders gain +45% duel power and 55% faster pincer cooldowns, but burn +45% more hunger!
+        const ageFactor = clamp(this.age / 120, 0, 1);
+        const ageDuelPowerMultiplier = 1.0 + (ageFactor * 0.45);
+        const ageCooldownDuration = lerp(1.0, 0.45, ageFactor);
+        const ageMetabolicMultiplier = 1.0 + (ageFactor * 0.45);
+
+        // Dynamic Metabolism: Idling consumes less hunger, but elder crabs have massive appetite!
         const [crawl, munch, pincer] = this.outputs;
         const crawlExertion = Math.abs(crawl - 0.5) * 2;
         const baseIdleBurn = 0.012;
         const activeOutputBurn = crawlExertion * 0.018 + (this.mouthOpen ? 0.008 : 0) + (this.pincerActive ? 0.012 : 0);
-        this.hunger += (baseIdleBurn + activeOutputBurn) * dt;
+        this.hunger += (baseIdleBurn + activeOutputBurn) * ageMetabolicMultiplier * dt;
 
         if (this.hunger >= 1.0) {
             this.dead = true;
@@ -409,7 +422,7 @@ class Crab {
                     j.tossedTimer = 3.5;
                     j.vy = -randRange(175, 240);
                     j.vx = randRange(-70, 70);
-                    this.pincerCooldown = 1.0;
+                    this.pincerCooldown = ageCooldownDuration;
                     this.score += 60;
                     this.foodEaten++;
                     this.hunger = Math.max(0, this.hunger - 0.25);
@@ -423,24 +436,27 @@ class Crab {
                 }
             }
 
-            // 2. Pincer Duel Collision with rival Crabs (Impairs power by gluttony)
+            // 2. Pincer Duel Collision with rival Crabs (Impairs power by gluttony, boosted by Elder age!)
             if (!tossedJelly) {
                 for (const c of crabs) {
                     if (c === this || c.dead || c.isAirborne) continue;
                     if (dist(this, c) < this.size * 1.15) {
-                        const myPower = pincer * (1.0 + this.hunger) * (this.size / 15) * (1.0 - this.gluttony * 0.45);
-                        const rivalPower = c.outputs[2] * (1.0 + c.hunger) * (c.size / 15) * (1.0 - c.gluttony * 0.45);
+                        const rivalAgeFactor = clamp(c.age / 120, 0, 1);
+                        const rivalDuelPowerMultiplier = 1.0 + (rivalAgeFactor * 0.45);
+
+                        const myPower = pincer * (1.0 + this.hunger) * (this.size / 15) * (1.0 - this.gluttony * 0.45) * ageDuelPowerMultiplier;
+                        const rivalPower = c.outputs[2] * (1.0 + c.hunger) * (c.size / 15) * (1.0 - c.gluttony * 0.45) * rivalDuelPowerMultiplier;
 
                         this.hunger += 0.08 * (this.size / 15);
                         c.hunger += 0.08 * (c.size / 15);
 
                         if (myPower >= rivalPower) {
                             c.launch();
-                            this.pincerCooldown = 1.0;
+                            this.pincerCooldown = ageCooldownDuration;
                             this._captureHighlight();
                         } else {
                             this.launch();
-                            c.pincerCooldown = 1.0;
+                            c.pincerCooldown = lerp(1.0, 0.45, rivalAgeFactor);
                             c._captureHighlight();
                         }
                         break;
@@ -479,10 +495,13 @@ class Crab {
         ctx.save();
         ctx.translate(this.x, this.y);
 
-        // Visual Hunger Tweening (Ruby Red -> Dusty Sandstone)
-        const hue = lerp(0, 30, this.hunger);
+        const ageFactor = clamp(this.age / 120, 0, 1);
+
+        // Visual Hunger & Age Tweening (Ruby Red -> Deep Obsidian/Garnet as Elder)
+        const baseHue = lerp(0, 30, this.hunger);
+        const hue = lerp(baseHue, 345, ageFactor * 0.5);
         const sat = lerp(85, 35, this.hunger);
-        const lum = lerp(48, 65, this.hunger);
+        const lum = lerp(48, 65, this.hunger) * (1.0 - ageFactor * 0.20); // Darker hardened armor
 
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
@@ -522,9 +541,9 @@ class Crab {
         ctx.moveTo(legS * 0.8, 2); ctx.lineTo(legS * 1.5, legS);
         ctx.stroke();
 
-        // Snapping Pincers / Claws: Active rhythmic opening and closing animation!
+        // Snapping Pincers / Claws: Enlarged significantly with Elder Titan Age!
         const clawDist = this.size * 0.55;
-        const clawRad = Math.max(2.2, this.size * 0.18);
+        const clawRad = Math.max(2.2, this.size * 0.18) * (1.0 + ageFactor * 0.30);
         
         let snapSpread = 0.3;
         if (this.pincerActive) {

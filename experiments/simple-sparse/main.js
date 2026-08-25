@@ -24,31 +24,32 @@ resizeCallbacks.push((b) => {
 });
 
 // 2. Evolutionary Lineage Registry with Size Classifications & Highlight Clips
+// 2. Evolutionary Lineage Registry with Size Classifications, Stagnation & Score Decay
 const bestBrains = {
     TurnFish: {
-        small: { brain: null, score: 0, highlights: [] },
-        medium: { brain: null, score: 0, highlights: [] },
-        large: { brain: null, score: 0, highlights: [] }
+        small: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        medium: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        large: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] }
     },
     Crab: {
-        small: { brain: null, score: 0, highlights: [] },
-        medium: { brain: null, score: 0, highlights: [] },
-        large: { brain: null, score: 0, highlights: [] }
+        small: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        medium: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        large: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] }
     },
     Jellyfish: {
-        small: { brain: null, score: 0, highlights: [] },
-        medium: { brain: null, score: 0, highlights: [] },
-        large: { brain: null, score: 0, highlights: [] }
+        small: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        medium: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        large: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] }
     },
     Predator: {
-        small: { brain: null, score: 0, highlights: [] },
-        medium: { brain: null, score: 0, highlights: [] },
-        large: { brain: null, score: 0, highlights: [] }
+        small: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        medium: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        large: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] }
     },
     Eel: {
-        small: { brain: null, score: 0, highlights: [] },
-        medium: { brain: null, score: 0, highlights: [] },
-        large: { brain: null, score: 0, highlights: [] }
+        small: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        medium: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] },
+        large: { brain: null, score: 0, allTimeScore: 0, stagnation: 0, highlights: [] }
     }
 };
 
@@ -74,19 +75,34 @@ let predatorKillCount = 0;
 let foodSpawnTimer = 0;
 let creatureSpawnTimer = 0;
 
-// Helper to record champion brains categorized by species and size tier
+// Helper to record champion brains with adaptive score decay & stagnation tracking
 function recordDeath(creature) {
     const species = creature.species;
     const tier = creature.sizeTier || "medium";
     if (!species || !bestBrains[species] || !bestBrains[species][tier]) return;
 
-    if (creature.score > bestBrains[species][tier].score) {
-        bestBrains[species][tier].score = creature.score;
-        bestBrains[species][tier].brain = creature.brain.clone();
-        bestBrains[species][tier].highlights = creature.highlightClips && creature.highlightClips.length > 0 
+    const record = bestBrains[species][tier];
+
+    // Check if creature dethrones the reigning champion threshold
+    if (creature.score > record.score || !record.brain) {
+        record.score = creature.score;
+        if (creature.score > record.allTimeScore) {
+            record.allTimeScore = creature.score;
+        }
+        record.stagnation = 0; // Reset stagnation on crowning
+        record.brain = creature.brain.clone();
+        record.highlights = creature.highlightClips && creature.highlightClips.length > 0 
             ? creature.highlightClips.map(c => [...c]) 
             : [];
         updateChampionButtons();
+    } else {
+        // Stagnation progression: failed to beat champion
+        record.stagnation++;
+        // Decay effective reigning score by 1.2% per failed generation (floor at 50)
+        record.score = Math.max(50, Math.floor(record.score * 0.988));
+        if (record.stagnation % 4 === 0) {
+            updateChampionButtons();
+        }
     }
 
     // Convert dead creatures into sinking floor carcasses (unless exploded or split via fission)
@@ -95,38 +111,46 @@ function recordDeath(creature) {
     }
 }
 
-// 4. Edge Spawning Hierarchy with Size Stratification
+// 4. Edge Spawning Hierarchy with Size Stratification, Novelty Injection & Stagnation Temperature
 function spawnEdgeEntity(species) {
     const fromLeft = Math.random() < 0.5;
     const startX = fromLeft ? -25 : bounds.w + 25;
     const startY = randRange(40, bounds.h - 60);
 
+    // 1 in 5 chance (20%) to inject a completely random/fresh brain for genetic novelty
+    const isNovelExplorer = Math.random() < 0.20;
+
     if (species === "TurnFish") {
         const size = randRange(12, 22);
         const tier = size < 15.5 ? "small" : (size < 19 ? "medium" : "large");
-        const template = bestBrains.TurnFish[tier].brain;
-        turnFishes.push(new TurnFish(startX, startY, bounds, template, size));
+        const record = bestBrains.TurnFish[tier];
+        const template = isNovelExplorer ? null : record.brain;
+        turnFishes.push(new TurnFish(startX, startY, bounds, template, size, record.stagnation));
     } else if (species === "Crab") {
         const size = randRange(11, 19);
         const tier = size < 13.5 ? "small" : (size < 16.5 ? "medium" : "large");
-        const template = bestBrains.Crab[tier].brain;
-        crabs.push(new Crab(startX, bounds.h - 10, bounds, template, size));
+        const record = bestBrains.Crab[tier];
+        const template = isNovelExplorer ? null : record.brain;
+        crabs.push(new Crab(startX, bounds.h - 10, bounds, template, size, record.stagnation));
     } else if (species === "Jellyfish") {
         const size = randRange(22, 58);
         const tier = size < 32 ? "small" : (size < 46 ? "medium" : "large");
         const topY = randRange(-20, 60);
-        const template = bestBrains.Jellyfish[tier].brain;
-        jellies.push(new Jellyfish(startX, topY, bounds, template, size));
+        const record = bestBrains.Jellyfish[tier];
+        const template = isNovelExplorer ? null : record.brain;
+        jellies.push(new Jellyfish(startX, topY, bounds, template, size, record.stagnation));
     } else if (species === "Predator") {
         const size = randRange(24, 68);
         const tier = size < 36 ? "small" : (size < 52 ? "medium" : "large");
-        const template = bestBrains.Predator[tier].brain;
-        predators.push(new PredatorFish(startX, startY, bounds, template, size));
+        const record = bestBrains.Predator[tier];
+        const template = isNovelExplorer ? null : record.brain;
+        predators.push(new PredatorFish(startX, startY, bounds, template, size, record.stagnation));
     } else if (species === "Eel") {
         const size = randRange(20, 38);
         const tier = size < 25 ? "small" : (size < 32 ? "medium" : "large");
-        const template = bestBrains.Eel[tier].brain;
-        eels.push(new RibbonEel(startX, startY, bounds, template, size));
+        const record = bestBrains.Eel[tier];
+        const template = isNovelExplorer ? null : record.brain;
+        eels.push(new RibbonEel(startX, startY, bounds, template, size, record.stagnation));
     }
 }
 
@@ -315,17 +339,27 @@ function updateChampionButtons() {
     ];
 
     championsContainer.innerHTML = speciesList.map(s => {
-        const smallScore = bestBrains[s.key].small.score;
-        const medScore = bestBrains[s.key].medium.score;
-        const largeScore = bestBrains[s.key].large.score;
+        const sm = bestBrains[s.key].small;
+        const md = bestBrains[s.key].medium;
+        const lg = bestBrains[s.key].large;
+
+        const formatBtn = (rec, label) => {
+            const hasBrain = rec.brain !== null;
+            const scoreText = hasBrain ? rec.score : '-';
+            const heat = rec.stagnation > 8 ? ' 🔥' : (rec.stagnation > 3 ? ' ⚡' : '');
+            const tooltip = hasBrain 
+                ? `${label} Champion\nReigning Threshold: ${rec.score}\nAll-Time Record: ${rec.allTimeScore}\nStagnation Heat: ${rec.stagnation}`
+                : `${label} (No champion yet)`;
+            return `<button class="champ-btn" data-sp="${s.key}" data-tier="${label.toLowerCase()}" title="${tooltip}">${label[0]} ${scoreText}${heat}</button>`;
+        };
 
         return `
             <div class="champ-row">
                 <span class="champ-name">${s.label}</span>
                 <div class="btn-group">
-                    <button class="champ-btn" data-sp="${s.key}" data-tier="small" title="Small (Score: ${smallScore})">S ${smallScore > 0 ? smallScore : '-'}</button>
-                    <button class="champ-btn" data-sp="${s.key}" data-tier="medium" title="Medium (Score: ${medScore})">M ${medScore > 0 ? medScore : '-'}</button>
-                    <button class="champ-btn" data-sp="${s.key}" data-tier="large" title="Large (Score: ${largeScore})">L ${largeScore > 0 ? largeScore : '-'}</button>
+                    ${formatBtn(sm, "Small")}
+                    ${formatBtn(md, "Medium")}
+                    ${formatBtn(lg, "Large")}
                 </div>
             </div>
         `;
@@ -463,10 +497,11 @@ const logic = (dt) => {
             recordDeath(j);
 
             // Cascading Fission on Death:
-            // Large -> 2 Medium (inherit medium champion brain), Medium -> 2 Small (inherit small champion brain)
+            // Large -> 2 Medium, Medium -> 2 Small
+            const isFissionExplorer = Math.random() < 0.20;
             if (j.sizeTier === "large" && jellies.length + 1 < CAPS.Jellyfish * 1.5) {
                 j.split = true;
-                const medTemplate = bestBrains.Jellyfish.medium.brain || j.brain.clone();
+                const medTemplate = isFissionExplorer ? null : (bestBrains.Jellyfish.medium.brain || j.brain.clone());
                 for (let k = 0; k < 2; k++) {
                     const offset = k === 0 ? -16 : 16;
                     const child = new Jellyfish(clamp(j.x + offset, 25, bounds.w - 25), j.y, bounds, medTemplate, randRange(34, 44));
@@ -477,7 +512,7 @@ const logic = (dt) => {
                 }
             } else if (j.sizeTier === "medium" && jellies.length + 1 < CAPS.Jellyfish * 1.5) {
                 j.split = true;
-                const smallTemplate = bestBrains.Jellyfish.small.brain || j.brain.clone();
+                const smallTemplate = isFissionExplorer ? null : (bestBrains.Jellyfish.small.brain || j.brain.clone());
                 for (let k = 0; k < 2; k++) {
                     const offset = k === 0 ? -12 : 12;
                     const child = new Jellyfish(clamp(j.x + offset, 20, bounds.w - 20), j.y, bounds, smallTemplate, randRange(22, 28));

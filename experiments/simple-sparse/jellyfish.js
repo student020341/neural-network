@@ -8,12 +8,13 @@ class Jellyfish {
      * @param {SparseNetwork} [inheritedBrain] 
      * @param {number} [customSize]
      */
-    constructor(x, y, bounds, inheritedBrain = null, customSize = null) {
+    constructor(x, y, bounds, inheritedBrain = null, customSize = null, stagnation = 0) {
         this.species = "Jellyfish";
         this.x = x;
         this.y = y;
         this.bounds = bounds;
         this.name = uid("Jelly");
+        this.stagnation = stagnation || 0;
 
         // Variable Size & Growth (Range 22 to 58, min is max spinner size, up to ~3x)
         this.size = customSize || randRange(22, 58);
@@ -83,7 +84,12 @@ class Jellyfish {
         if (inheritedBrain) {
             this.brain = inheritedBrain.clone();
             this.brain.name = this.name;
-            this.brain.mutate(0.12, { strength: 0.25, addConnectionRate: 0.04, addNodeRate: 0.015 });
+            const temp = 1.0 + Math.min(2.5, this.stagnation * 0.04);
+            this.brain.mutate(0.12 * temp, {
+                strength: 0.25 * (1.0 + Math.min(1.5, this.stagnation * 0.03)),
+                addConnectionRate: 0.04 * (1.0 + Math.min(2.0, this.stagnation * 0.03)),
+                addNodeRate: 0.015 * (1.0 + Math.min(2.0, this.stagnation * 0.03))
+            });
         } else {
             this.brain = new SparseNetwork({
                 name: this.name,
