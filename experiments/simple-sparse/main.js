@@ -227,29 +227,29 @@ function stopHighlightReplay() {
 
 // Helper to create an animated preview creature avatar for champion replays
 function createPreviewCreature(species, tier) {
-    let size = 16;
+    let size = 18.5;
     if (species === "TurnFish") {
-        size = tier === "small" ? 13 : (tier === "medium" ? 17 : 21);
+        size = tier === "small" ? 13.5 : (tier === "medium" ? 18.5 : 24.0);
         const f = new TurnFish(0, 0, bounds, null, size);
         f.invulnerableTimer = 0;
         return f;
     } else if (species === "Crab") {
-        size = tier === "small" ? 12 : (tier === "medium" ? 15 : 18);
+        size = tier === "small" ? 13.5 : (tier === "medium" ? 19.0 : 27.0);
         const c = new Crab(0, 0, bounds, null, size);
         c.invulnerableTimer = 0;
         return c;
     } else if (species === "Jellyfish") {
-        size = tier === "small" ? 26 : (tier === "medium" ? 38 : 52);
+        size = tier === "small" ? 23.0 : (tier === "medium" ? 36.0 : 50.0);
         const j = new Jellyfish(0, 0, bounds, null, size);
         j.invulnerableTimer = 0;
         return j;
     } else if (species === "Predator") {
-        size = tier === "small" ? 32 : (tier === "medium" ? 48 : 66);
+        size = tier === "small" ? 29.0 : (tier === "medium" ? 39.0 : 50.0);
         const p = new PredatorFish(0, 0, bounds, null, size);
         p.invulnerableTimer = 0;
         return p;
     } else if (species === "Eel") {
-        size = tier === "small" ? 22 : (tier === "medium" ? 28 : 35);
+        size = tier === "small" ? 22.5 : (tier === "medium" ? 31.0 : 42.0);
         const e = new RibbonEel(0, 0, bounds, null, size);
         e.invulnerableTimer = 0;
         return e;
@@ -680,11 +680,11 @@ const render = (_, cw, ch) => {
     ctx.lineTo(bounds.w, bounds.h - 10);
     ctx.stroke();
 
-    // Layer 1: Sunken Carcasses
-    for (const c of carcasses) c.draw(ctx);
+    // Layer 1: Sunken Carcasses (Batched in 3 passes total)
+    Carcass.drawBatch(ctx, carcasses);
 
-    // Layer 2: Food Pellets (Falling & Settled)
-    for (const f of foods) f.draw(ctx);
+    // Layer 2: Food Pellets (Batched in 4 passes total)
+    Food.drawBatch(ctx, foods);
 
     // Layer 3: Crabs (Crawling floor perimeter)
     for (const c of crabs) c.draw(ctx);

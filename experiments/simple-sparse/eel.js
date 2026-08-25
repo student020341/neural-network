@@ -1,4 +1,21 @@
-// Ribbon Eel - Pelagic Scavenger & Hydrodynamic Lifter
+// Ribbon Eel - Pelagic Scavenger & Hydrodynamic Lifter with 9 Discrete Sizes & Spline Batching
+
+// 9 Discrete Size Constants: 3 Small, 3 Medium, 3 Large
+const EEL_SIZES = [
+    20.0, 22.5, 25.0, // Small (S1, S2, S3)
+    28.0, 31.0, 34.0, // Medium (M1, M2, M3)
+    38.0, 42.0, 46.0  // Large (L1, L2, L3)
+];
+
+// Pre-computed 6 Discrete Emerald/Cyan/Teal/Slate Color Tiers
+const EEL_COLOR_TIERS = [
+    { fill: "#14b8a6", stroke: "#5eead4", dorsal: "#2dd4bf" }, // 0: Satiated Electric Teal
+    { fill: "#0d9488", stroke: "#2dd4bf", dorsal: "#14b8a6" }, // 1: Vibrant Marine Cyan
+    { fill: "#0891b2", stroke: "#38bdf8", dorsal: "#06b6d4" }, // 2: Deep Aqua
+    { fill: "#0284c7", stroke: "#60a5fa", dorsal: "#38bdf8" }, // 3: Pelagic Azure
+    { fill: "#475569", stroke: "#94a3b8", dorsal: "#64748b" }, // 4: Dusky Slate
+    { fill: "#334155", stroke: "#64748b", dorsal: "#475569" }  // 5: Starving Shadow
+];
 
 class RibbonEel {
     /**
@@ -16,11 +33,26 @@ class RibbonEel {
         this.name = uid("Eel");
         this.stagnation = stagnation || 0;
 
-        // Variable Size (Range 20 to 38, baseline 28)
-        this.size = customSize || randRange(20, 38);
-        this.sizeTier = this.size < 25 ? "small" : (this.size < 32 ? "medium" : "large");
+        // 9 Discrete Size Tier Selection (3 Small, 3 Medium, 3 Large)
+        if (typeof customSize === "number") {
+            let closestIdx = 0;
+            let minDist = 999;
+            for (let i = 0; i < EEL_SIZES.length; i++) {
+                const d = Math.abs(EEL_SIZES[i] - customSize);
+                if (d < minDist) {
+                    minDist = d;
+                    closestIdx = i;
+                }
+            }
+            this.sizeIndex = closestIdx;
+        } else {
+            this.sizeIndex = Math.floor(Math.random() * EEL_SIZES.length);
+        }
 
-        const sizeFactor = this.size / 28;
+        this.size = EEL_SIZES[this.sizeIndex];
+        this.sizeTier = this.sizeIndex < 3 ? "small" : (this.sizeIndex < 6 ? "medium" : "large");
+
+        const sizeFactor = this.size / 30;
         this.maxSpeed = 125 + sizeFactor * 20;
         this.maxTurnSpeed = Math.PI * 2.1;
 
@@ -378,54 +410,56 @@ class RibbonEel {
 
         ctx.save();
 
-        // Visual Hunger Tweening (Electric Cyan/Emerald -> Dusky Slate)
-        const hue = lerp(175, 45, this.hunger);
-        const sat = lerp(90, 25, this.hunger);
-        const lum = lerp(48, 62, this.hunger);
+        // 6 Discrete Skin Color Tiers
+        const hungerTier = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
+        const style = EEL_COLOR_TIERS[hungerTier];
 
-        // Invulnerability Shield Shimmer
+        // Invulnerability Shield Shimmer (Discretized)
         if (this.invulnerableTimer > 0) {
-            const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
+            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
+            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
             ctx.lineWidth = 2.0;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.size * 0.45, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // 1. Draw Trailing Serpentine Ribbon Body
+        // 1. Draw Trailing Serpentine Ribbon Body as Continuous Tapered Strip
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
+        // Main body spine stroke
+        ctx.strokeStyle = style.fill;
         for (let i = this.numSegments - 1; i >= 1; i--) {
             const p1 = this.spine[i];
             const p0 = this.spine[i - 1];
-            const segmentRadius = (this.size * 0.28) * (1.0 - (i / this.numSegments) * 0.65);
+            const segW = (this.size * 0.56) * (1.0 - (i / this.numSegments) * 0.65);
 
-            ctx.strokeStyle = getHsl(hue, sat, lum);
-            ctx.lineWidth = segmentRadius * 2;
-            ctx.beginPath();
-            ctx.moveTo(p0.x, p0.y);
-            ctx.lineTo(p1.x, p1.y);
-            ctx.stroke();
-
-            // Lighter dorsal crest stripe
-            ctx.strokeStyle = getHsl(hue + 15, sat, lum + 16);
-            ctx.lineWidth = Math.max(1, segmentRadius * 0.7);
+            ctx.lineWidth = segW;
             ctx.beginPath();
             ctx.moveTo(p0.x, p0.y);
             ctx.lineTo(p1.x, p1.y);
             ctx.stroke();
         }
 
+        // 1 Continuous Dorsal Crest Polyline Pass
+        ctx.strokeStyle = style.dorsal;
+        ctx.lineWidth = Math.max(1.0, this.size * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(this.spine[0].x, this.spine[0].y);
+        for (let i = 1; i < this.numSegments; i++) {
+            ctx.lineTo(this.spine[i].x, this.spine[i].y);
+        }
+        ctx.stroke();
+
         // 2. Draw Head
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
 
         const headR = this.size * 0.28;
-        ctx.fillStyle = getHsl(hue, sat, lum);
-        ctx.strokeStyle = getHsl(hue + 10, sat, lum + 14);
-        ctx.lineWidth = 1.2;
+        ctx.fillStyle = style.fill;
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = 1.1;
 
         ctx.beginPath();
         ctx.ellipse(0, 0, headR * 1.2, headR * 0.85, 0, 0, Math.PI * 2);
@@ -445,7 +479,7 @@ class RibbonEel {
         const eyeX = headR * 0.35;
         const eyeY = headR * 0.45;
 
-        ctx.fillStyle = "white";
+        ctx.fillStyle = "#fff";
         ctx.beginPath();
         ctx.arc(eyeX, -eyeY, eyeR, 0, Math.PI * 2);
         ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);

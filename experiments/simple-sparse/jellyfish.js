@@ -1,4 +1,21 @@
-// Jellyfish - Floating Sanctuary & Lethal Hazard
+// Jellyfish - Floating Sanctuary & Lethal Hazard with 9 Discrete Sizes & Compound Path Batching
+
+// 9 Discrete Size Constants: 3 Small, 3 Medium, 3 Large
+const JELLY_SIZES = [
+    20.0, 23.0, 26.0, // Small (S1, S2, S3)
+    32.0, 36.0, 40.0, // Medium (M1, M2, M3)
+    46.0, 50.0, 55.0  // Large (L1, L2, L3)
+];
+
+// Pre-computed 6 Discrete Neon Bell Color Tiers
+const JELLY_COLOR_TIERS = [
+    { fill: "rgba(225, 29, 205, 0.72)", stroke: "rgba(255, 100, 240, 0.90)", core: "rgba(255, 120, 250, 0.85)", tentacle: "rgba(225, 29, 205, 0.55)" }, // 0: Vivid Neon Magenta
+    { fill: "rgba(180, 40, 235, 0.68)", stroke: "rgba(215, 110, 255, 0.85)", core: "rgba(230, 130, 255, 0.80)", tentacle: "rgba(180, 40, 235, 0.50)" }, // 1: Electric Violet
+    { fill: "rgba(145, 60, 230, 0.62)", stroke: "rgba(185, 120, 255, 0.80)", core: "rgba(205, 140, 255, 0.75)", tentacle: "rgba(145, 60, 230, 0.45)" }, // 2: Amethyst
+    { fill: "rgba(110, 75, 215, 0.55)", stroke: "rgba(155, 130, 245, 0.72)", core: "rgba(175, 150, 255, 0.65)", tentacle: "rgba(110, 75, 215, 0.40)" }, // 3: Slate Iris
+    { fill: "rgba(90, 85, 190, 0.45)",  stroke: "rgba(135, 130, 220, 0.60)", core: "rgba(155, 150, 235, 0.50)", tentacle: "rgba(90, 85, 190, 0.32)" }, // 4: Faded Mauve
+    { fill: "rgba(80, 85, 120, 0.32)",  stroke: "rgba(120, 130, 170, 0.45)", core: "rgba(140, 150, 190, 0.35)", tentacle: "rgba(80, 85, 120, 0.22)" }  // 5: Starving Ghost
+];
 
 class Jellyfish {
     /**
@@ -16,13 +33,28 @@ class Jellyfish {
         this.name = uid("Jelly");
         this.stagnation = stagnation || 0;
 
-        // Variable Size & Growth (Range 22 to 58, min is max spinner size, up to ~3x)
-        this.size = customSize || randRange(22, 58);
+        // 9 Discrete Size Tier Selection (3 Small, 3 Medium, 3 Large)
+        if (typeof customSize === "number") {
+            let closestIdx = 0;
+            let minDist = 999;
+            for (let i = 0; i < JELLY_SIZES.length; i++) {
+                const d = Math.abs(JELLY_SIZES[i] - customSize);
+                if (d < minDist) {
+                    minDist = d;
+                    closestIdx = i;
+                }
+            }
+            this.sizeIndex = closestIdx;
+        } else {
+            this.sizeIndex = Math.floor(Math.random() * JELLY_SIZES.length);
+        }
+
+        this.size = JELLY_SIZES[this.sizeIndex];
         this.radius = this.size / 2;
-        this.sizeTier = this.size < 32 ? "small" : (this.size < 46 ? "medium" : "large");
+        this.sizeTier = this.sizeIndex < 3 ? "small" : (this.sizeIndex < 6 ? "medium" : "large");
 
         // Physics & Motion
-        const sizeRatio = (this.size - 22) / 36;
+        const sizeRatio = (this.size - 20) / 35; // 0 to 1
         this.vx = 0;
         this.vy = 10 + sizeRatio * 6;
         this.tiltAngle = 0;
@@ -426,48 +458,45 @@ class Jellyfish {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.tiltAngle * 0.6);
 
-        // Visual Hunger Tweening (Electric Neon Pink/Violet -> Ghostly Gray)
-        const hue = lerp(290, 0, this.hunger);
-        const sat = lerp(85, 0, this.hunger);
-        const lum = lerp(65, 75, this.hunger);
-        const alpha = lerp(0.72, 0.32, this.hunger);
+        // 6 Discrete Neon Color Tiers
+        const colorTier = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
+        const style = JELLY_COLOR_TIERS[colorTier];
 
-        // Tossed Vulnerable Halo
+        // Tossed Vulnerable Halo (Discretized)
         if (this.tossedTimer > 0) {
-            const pulse = (Math.sin(this.age * 16) + 1) * 0.5;
-            ctx.strokeStyle = getRgba(251, 191, 36, 0.6 + pulse * 0.35);
-            ctx.lineWidth = 2.4;
+            ctx.strokeStyle = "rgba(251, 191, 36, 0.75)";
+            ctx.lineWidth = 2.0;
             ctx.beginPath();
-            ctx.arc(0, 0, this.radius * (1.35 + pulse * 0.15), 0, Math.PI * 2);
+            ctx.arc(0, 0, this.radius * 1.4, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // Invulnerability Shield Shimmer
+        // Invulnerability Shield Shimmer (Discretized)
         if (this.invulnerableTimer > 0) {
-            const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
-            ctx.lineWidth = 2.2;
+            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
+            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
+            ctx.lineWidth = 2.0;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.25, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // Water Jet Shockwave Ripple Rings
+        // Water Jet Shockwave Ripple Rings (Discretized)
         if (this.jetTimer > 0) {
-            const jetAlpha = (this.jetTimer / 0.22);
-            ctx.strokeStyle = getRgba(120, 240, 255, jetAlpha * 0.6);
-            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = "rgba(120, 240, 255, 0.45)";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.arc(0, 0, this.radius * (1.3 + (1 - jetAlpha) * 0.8), 0, Math.PI * 2);
+            ctx.arc(0, 0, this.radius * 1.6, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        const squeeze = 1.0 - this.pulsePower * 0.3;
-        const stretch = 1.0 + this.pulsePower * 0.4;
+        // 4 Discrete Squeeze/Stretch Pulse Stages
+        const squeeze = 1.0 - this.pulsePower * 0.25;
+        const stretch = 1.0 + this.pulsePower * 0.35;
 
-        ctx.fillStyle = getHsla(hue, sat, lum, alpha);
-        ctx.strokeStyle = getHsla(hue, sat, lum + 15, alpha + 0.2);
-        ctx.lineWidth = 1.2;
+        ctx.fillStyle = style.fill;
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = 1.1;
 
         // Umbrella Bell
         ctx.beginPath();
@@ -478,27 +507,26 @@ class Jellyfish {
         ctx.stroke();
 
         // Inner glowing core
-        const coreGlow = (this.buoyancy - 0.25) / 0.75;
-        ctx.fillStyle = getHsla(hue + 20, sat, lum + 20, alpha * (0.85 + coreGlow * 0.15));
+        ctx.fillStyle = style.core;
         ctx.beginPath();
         ctx.arc(0, -2, this.radius * 0.45 * squeeze, 0, Math.PI * 2);
         ctx.fill();
 
-        // Trailing tentacles
-        ctx.strokeStyle = getHsla(hue, sat, lum, alpha * 0.75);
+        // Trailing Tentacles: Combined into 1 Single Compound Path (Slashing 13 strokes -> 1 stroke)
+        ctx.strokeStyle = style.tentacle;
         ctx.lineWidth = Math.max(0.8, this.size * 0.05);
         const tentacleLen = this.size * 0.8 * stretch;
         const wave = Math.sin(this.age * 7);
         const trailDrag = -this.vx * 0.18;
+        const numTentacles = Math.max(3, Math.floor(this.size * 0.14));
 
-        const numTentacles = Math.max(4, Math.floor(this.size * 0.15));
+        ctx.beginPath();
         for (let i = -numTentacles; i <= numTentacles; i++) {
             const tx = i * (this.radius * (0.8 / numTentacles) * squeeze);
-            ctx.beginPath();
             ctx.moveTo(tx, 3);
             ctx.quadraticCurveTo(tx + wave * 2.5 + trailDrag * 0.5, tentacleLen * 0.5, tx - wave * 2 + trailDrag, tentacleLen);
-            ctx.stroke();
         }
+        ctx.stroke();
 
         ctx.restore();
     }

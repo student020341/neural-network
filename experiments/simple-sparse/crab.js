@@ -1,4 +1,21 @@
-// Crab - Benthic Scavenger & Floor Cleaner
+// Crab - Benthic Scavenger & Floor Cleaner with 9 Discrete Sizes & Quantized Rendering
+
+// 9 Discrete Size Constants: 3 Small, 3 Medium, 3 Large
+const CRAB_SIZES = [
+    12.0, 13.5, 15.0, // Small (S1, S2, S3)
+    17.0, 19.0, 21.0, // Medium (M1, M2, M3)
+    24.0, 27.0, 30.0  // Large/Titan (L1, L2, L3)
+];
+
+// Pre-computed 6 Discrete Carapace Armor Color Tiers
+const CRAB_COLOR_TIERS = [
+    { fill: "#e03e2e", stroke: "#a62115", leg: "#8a160d" }, // 0: Fresh Scarlet
+    { fill: "#d95325", stroke: "#9e3511", leg: "#80270a" }, // 1: Crimson Rust
+    { fill: "#c45a27", stroke: "#8a3a14", leg: "#6e2a0b" }, // 2: Burnt Amber
+    { fill: "#a85028", stroke: "#703013", leg: "#57210a" }, // 3: Hardened Chitin
+    { fill: "#7e3828", stroke: "#522014", leg: "#3d1309" }, // 4: Deep Garnet Elder
+    { fill: "#4a2428", stroke: "#2e1215", leg: "#200a0d" }  // 5: Obsidian Titan Elder
+];
 
 class Crab {
     /**
@@ -14,10 +31,25 @@ class Crab {
         this.name = uid("Crab");
         this.stagnation = stagnation || 0;
 
-        // Variable Size & Trade-offs (Range 11 to 19, baseline 15)
-        this.size = customSize || randRange(11, 19);
+        // 9 Discrete Size Tier Selection (3 Small, 3 Medium, 3 Large)
+        if (typeof customSize === "number") {
+            let closestIdx = 0;
+            let minDist = 999;
+            for (let i = 0; i < CRAB_SIZES.length; i++) {
+                const d = Math.abs(CRAB_SIZES[i] - customSize);
+                if (d < minDist) {
+                    minDist = d;
+                    closestIdx = i;
+                }
+            }
+            this.sizeIndex = closestIdx;
+        } else {
+            this.sizeIndex = Math.floor(Math.random() * CRAB_SIZES.length);
+        }
+
+        this.size = CRAB_SIZES[this.sizeIndex];
         this.radius = this.size / 2;
-        this.sizeTier = this.size < 13.5 ? "small" : (this.size < 16.5 ? "medium" : "large");
+        this.sizeTier = this.sizeIndex < 3 ? "small" : (this.sizeIndex < 6 ? "medium" : "large");
 
         // Perimeter Position along U-trench (Left 25% wall -> Seafloor -> Right 25% wall)
         const wallH = this.bounds.h * 0.25;
@@ -551,36 +583,36 @@ class Crab {
         ctx.save();
         ctx.translate(this.x, this.y);
 
+        // 6 Discrete Carapace Armor Color Tiers (Modified by Age/Elder Status)
         const ageFactor = clamp(this.age / 120, 0, 1);
+        const hungerIdx = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
+        const colorTier = Math.min(5, hungerIdx + Math.floor(ageFactor * 2));
+        const style = CRAB_COLOR_TIERS[colorTier];
 
-        // Visual Hunger & Age Tweening (Ruby Red -> Deep Obsidian/Garnet as Elder)
-        const baseHue = lerp(0, 30, this.hunger);
-        const hue = lerp(baseHue, 345, ageFactor * 0.5);
-        const sat = lerp(85, 35, this.hunger);
-        const lum = lerp(48, 65, this.hunger) * (1.0 - ageFactor * 0.20); // Darker hardened armor
-
-        // Invulnerability Shield Shimmer
+        // Invulnerability Shield Shimmer (Discretized)
         if (this.invulnerableTimer > 0) {
-            const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
-            ctx.lineWidth = 2.2;
+            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
+            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
+            ctx.lineWidth = 2.0;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        ctx.fillStyle = getHsl(hue, sat, lum);
-        ctx.strokeStyle = getHsl(hue, sat, lum - 15);
-        ctx.lineWidth = 1.1;
+        // Rounded crab carapace
+        const bloatScale = 1.0 + this.gluttony * 0.20;
+        const halfW = (this.size / 2) * bloatScale;
+        const halfH = (this.size / 2.8) * bloatScale;
 
-        // Rounded crab carapace (swells slightly with gluttony)
-        const bloatScale = 1.0 + this.gluttony * 0.2;
         ctx.beginPath();
-        ctx.ellipse(0, 0, (this.size / 2) * bloatScale, (this.size / 2.8) * bloatScale, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+        ctx.fillStyle = style.fill;
         ctx.fill();
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = style.stroke;
         ctx.stroke();
 
-        // Flashing black dot when mouth is actively munching (toggles every ~125ms)
+        // Flashing mouth munch indicator
         if (this.mouthOpen && (Math.floor(this.time * 8) % 2 === 0)) {
             ctx.fillStyle = "#111";
             ctx.beginPath();
@@ -588,7 +620,9 @@ class Crab {
             ctx.fill();
         }
 
-        // Walking legs
+        // Batched Walking Legs (Single Path)
+        ctx.strokeStyle = style.leg;
+        ctx.lineWidth = 1.1;
         ctx.beginPath();
         const legS = this.size * 0.35;
         ctx.moveTo(-legS * 0.8, 2); ctx.lineTo(-legS * 1.5, legS);
@@ -597,7 +631,7 @@ class Crab {
         ctx.moveTo(legS * 0.8, 2); ctx.lineTo(legS * 1.5, legS);
         ctx.stroke();
 
-        // Snapping Pincers / Claws: Enlarged significantly with Elder Titan Age!
+        // Snapping Pincers / Claws (Batched Pass)
         const clawDist = this.size * 0.55;
         const clawRad = Math.max(2.2, this.size * 0.18) * (1.0 + ageFactor * 0.30);
         
@@ -607,36 +641,34 @@ class Crab {
         } else if (this.mouthOpen) {
             snapSpread = 0.4 + Math.abs(Math.sin(this.time * 8)) * 1.2;
         } else if (this.isStrained) {
-            snapSpread = 0.15; // Exhausted droop
+            snapSpread = 0.15;
         }
 
-        const drawSplitClaw = (cx, cy) => {
-            ctx.beginPath();
-            ctx.arc(cx, cy - snapSpread, clawRad, Math.PI, 0, false);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+        const clawColor = this.isStrained ? "#64748b" : style.fill;
+        const clawStroke = this.isStrained ? "#475569" : style.stroke;
 
-            ctx.beginPath();
-            ctx.arc(cx, cy + snapSpread, clawRad, 0, Math.PI, false);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        };
+        ctx.fillStyle = clawColor;
+        ctx.strokeStyle = clawStroke;
+        ctx.lineWidth = 1.0;
 
-        // Muscle Strain Visual: Tween claw color from natural hue to exhausted stone gray
-        const strainRatio = this.isStrained ? 1.0 : clamp(this.muscleStrain, 0, 1);
-        const clawSat = lerp(sat, 0, strainRatio);
-        const clawLum = lerp(lum - 8, 48, strainRatio);
-
-        ctx.fillStyle = getHsl(hue, clawSat, clawLum);
-        ctx.strokeStyle = getHsl(hue, clawSat, clawLum - 14);
-        drawSplitClaw(-clawDist, -this.size * 0.3);
-        drawSplitClaw(clawDist, -this.size * 0.3);
+        // Draw Left & Right Claws in 1 Combined Path
+        ctx.beginPath();
+        // Left claw top & bottom
+        ctx.arc(-clawDist, -this.size * 0.3 - snapSpread, clawRad, Math.PI, 0, false);
+        ctx.closePath();
+        ctx.arc(-clawDist, -this.size * 0.3 + snapSpread, clawRad, 0, Math.PI, false);
+        ctx.closePath();
+        // Right claw top & bottom
+        ctx.arc(clawDist, -this.size * 0.3 - snapSpread, clawRad, Math.PI, 0, false);
+        ctx.closePath();
+        ctx.arc(clawDist, -this.size * 0.3 + snapSpread, clawRad, 0, Math.PI, false);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
 
         // Eyes on stalks
-        const eyeOff = this.size * 0.2;
-        ctx.fillStyle = "white";
+        const eyeOff = this.size * 0.20;
+        ctx.fillStyle = "#fff";
         ctx.beginPath();
         ctx.arc(-eyeOff, -this.size * 0.32, 1.8, 0, Math.PI * 2);
         ctx.arc(eyeOff, -this.size * 0.32, 1.8, 0, Math.PI * 2);

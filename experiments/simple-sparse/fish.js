@@ -1,4 +1,31 @@
-// TurnFish (Spinner Fish) - Primary Pelagic Forager & Prey
+// TurnFish (Spinner Fish) - Primary Pelagic Forager & Prey with 9 Discrete Sizes & Quantized Rendering
+
+// 9 Discrete Size Constants: 3 Small, 3 Medium, 3 Large
+const TURNFISH_SIZES = [
+    12.0, 13.5, 15.0, // Small (S1, S2, S3)
+    17.0, 18.5, 20.0, // Medium (M1, M2, M3)
+    22.0, 24.0, 26.0  // Large (L1, L2, L3)
+];
+
+// Pre-computed 8 Discrete Hunger Visual Tiers
+const TURNFISH_HUNGER_TIERS = [
+    { fill: "#1fbf75", stroke: "#5ef0a5", fin: "#17965c" }, // 0: Satiated Emerald
+    { fill: "#36cf63", stroke: "#77ea9a", fin: "#28a74e" }, // 1: Healthy Green
+    { fill: "#7bd433", stroke: "#a6f069", fin: "#62aa28" }, // 2: Lime
+    { fill: "#b8cf27", stroke: "#dcef65", fin: "#94a61f" }, // 3: Chartreuse
+    { fill: "#e0b828", stroke: "#f5d469", fin: "#b59420" }, // 4: Amber Yellow
+    { fill: "#e08428", stroke: "#f5aa69", fin: "#b56b20" }, // 5: Orange
+    { fill: "#e04e28", stroke: "#f58269", fin: "#b53e20" }, // 6: Coral
+    { fill: "#d9383a", stroke: "#f87171", fin: "#ad2c2e" }  // 7: Starving Crimson
+];
+
+// Pre-computed 4 Discrete Invulnerability Shimmer Alphas
+const SHIELD_ALPHAS = [
+    "rgba(100, 240, 255, 0.20)",
+    "rgba(100, 240, 255, 0.40)",
+    "rgba(100, 240, 255, 0.60)",
+    "rgba(100, 240, 255, 0.75)"
+];
 
 class TurnFish {
     /**
@@ -16,11 +43,26 @@ class TurnFish {
         this.name = uid("TurnFish");
         this.stagnation = stagnation || 0;
 
-        // Variable Size & Trade-offs (Range 12 to 22, baseline 16)
-        this.size = customSize || randRange(12, 22);
-        this.sizeTier = this.size < 15.5 ? "small" : (this.size < 19 ? "medium" : "large");
+        // 9 Discrete Size Tier Selection (3 Small, 3 Medium, 3 Large)
+        if (typeof customSize === "number") {
+            let closestIdx = 0;
+            let minDist = 999;
+            for (let i = 0; i < TURNFISH_SIZES.length; i++) {
+                const d = Math.abs(TURNFISH_SIZES[i] - customSize);
+                if (d < minDist) {
+                    minDist = d;
+                    closestIdx = i;
+                }
+            }
+            this.sizeIndex = closestIdx;
+        } else {
+            this.sizeIndex = Math.floor(Math.random() * TURNFISH_SIZES.length);
+        }
 
-        const sizeRatio = (this.size - 16) / 6; // -1 to +1
+        this.size = TURNFISH_SIZES[this.sizeIndex];
+        this.sizeTier = this.sizeIndex < 3 ? "small" : (this.sizeIndex < 6 ? "medium" : "large");
+
+        const sizeRatio = (this.size - 18.5) / 7.5; // -1 to +1 normalized
         this.baseMaxSpeed = 115 + sizeRatio * 15;
         this.maxSpeed = this.baseMaxSpeed;
         this.maxTurnSpeed = (Math.PI * 1.9) - sizeRatio * (Math.PI * 0.5);
@@ -418,54 +460,56 @@ class TurnFish {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
 
-        // Visual Hunger & Gluttony Tweening
-        const hue = lerp(195, 40, this.hunger);
-        const sat = lerp(90, 20, this.hunger);
-        const lum = lerp(55, 65, this.hunger);
+        // 8 Discrete Hunger Tiers
+        const hungerTier = Math.min(7, Math.max(0, Math.floor(this.hunger * 8)));
+        const style = TURNFISH_HUNGER_TIERS[hungerTier];
 
-        // Invulnerability Shield Shimmer
+        // 4 Discrete Invulnerability Shield Shimmer Phases
         if (this.invulnerableTimer > 0) {
-            const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
-            ctx.lineWidth = 2.5;
+            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
+            ctx.strokeStyle = SHIELD_ALPHAS[phaseIdx];
+            ctx.lineWidth = 2.0;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        ctx.fillStyle = getHsl(hue, sat, lum);
-        ctx.strokeStyle = getHsl(hue, sat + 5, lum + 15);
-        ctx.lineWidth = 1.1;
+        // Teardrop fish body
+        const bloatScale = 1.0 + this.gluttony * 0.20;
+        const halfW = (this.size / 2) * bloatScale;
+        const halfH = (this.size / 3.2) * bloatScale;
 
-        // Teardrop fish body (Swells slightly with gluttony bloat)
-        const bloatScale = 1.0 + this.gluttony * 0.22;
         ctx.beginPath();
-        ctx.ellipse(0, 0, (this.size / 2) * bloatScale, (this.size / 3.2) * bloatScale, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+        ctx.fillStyle = style.fill;
         ctx.fill();
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = style.stroke;
         ctx.stroke();
-
-        // Gulping Mouth Animation
-        if (this.mouthOpen) {
-            ctx.fillStyle = "#0c1824";
-            ctx.beginPath();
-            ctx.ellipse(this.size * 0.48 * bloatScale, 0, 2.2, 3.2, 0, 0, Math.PI * 2);
-            ctx.fill();
-        }
 
         // Wagging tail fin
         const finSize = this.size * 0.25;
         ctx.beginPath();
-        ctx.moveTo(-this.size / 2, 0);
-        ctx.lineTo(-this.size / 2 - finSize, -finSize * 0.8);
-        ctx.lineTo(-this.size / 2 - finSize, finSize * 0.8);
+        ctx.moveTo(-halfW, 0);
+        ctx.lineTo(-halfW - finSize, -finSize * 0.8);
+        ctx.lineTo(-halfW - finSize, finSize * 0.8);
         ctx.closePath();
-        ctx.fillStyle = getHsl(hue, sat, lum - 10);
+        ctx.fillStyle = style.fin;
         ctx.fill();
 
-        // Eye
+        // Gulping Mouth
+        if (this.mouthOpen) {
+            ctx.fillStyle = "#0c1824";
+            ctx.beginPath();
+            ctx.ellipse(halfW * 0.95, 0, 2.0, 3.0, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Eyes
         const eyeRadius = Math.max(1.8, this.size * 0.12);
-        const eyeOffset = this.size * 0.25;
-        ctx.fillStyle = "white";
+        const eyeOffset = this.size * 0.24;
+
+        ctx.fillStyle = "#fff";
         ctx.beginPath();
         ctx.arc(eyeOffset, -eyeRadius, eyeRadius, 0, Math.PI * 2);
         ctx.arc(eyeOffset, eyeRadius, eyeRadius, 0, Math.PI * 2);
@@ -473,8 +517,8 @@ class TurnFish {
 
         ctx.fillStyle = "#111";
         ctx.beginPath();
-        ctx.arc(eyeOffset + eyeRadius * 0.4, -eyeRadius, eyeRadius * 0.5, 0, Math.PI * 2);
-        ctx.arc(eyeOffset + eyeRadius * 0.4, eyeRadius, eyeRadius * 0.5, 0, Math.PI * 2);
+        ctx.arc(eyeOffset + eyeRadius * 0.35, -eyeRadius, eyeRadius * 0.5, 0, Math.PI * 2);
+        ctx.arc(eyeOffset + eyeRadius * 0.35, eyeRadius, eyeRadius * 0.5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
