@@ -16,9 +16,13 @@ class SparseNetwork {
             options = numInputs;
             numOutputs = options.numOutputs;
             this.name = options.name || "";
-            this.inputLabels = options.inputLabels || null;
-            this.outputLabels = options.outputLabels || null;
+            this.inputLabels = options.inputLabels ? [...options.inputLabels] : null;
+            this.outputLabels = options.outputLabels ? [...options.outputLabels] : null;
             numInputs = options.numInputs;
+        } else {
+            this.name = options.name || "";
+            this.inputLabels = options.inputLabels ? [...options.inputLabels] : null;
+            this.outputLabels = options.outputLabels ? [...options.outputLabels] : null;
         }
         this.numInputs = numInputs || 0;
         this.numOutputs = numOutputs || 0;
@@ -288,7 +292,12 @@ class SparseNetwork {
      * @returns {SparseNetwork}
      */
     clone() {
-        const cloneNet = new SparseNetwork(this.numInputs, this.numOutputs, { initialConnectivity: 0 });
+        const cloneNet = new SparseNetwork(this.numInputs, this.numOutputs, {
+            name: this.name,
+            inputLabels: this.inputLabels ? [...this.inputLabels] : null,
+            outputLabels: this.outputLabels ? [...this.outputLabels] : null,
+            initialConnectivity: 0
+        });
         cloneNet.totalNodes = this.totalNodes;
         cloneNet.numHidden = this.numHidden;
 
@@ -323,6 +332,9 @@ class SparseNetwork {
     toJSON() {
         return {
             type: 'SparseNetwork',
+            name: this.name,
+            inputLabels: this.inputLabels,
+            outputLabels: this.outputLabels,
             numInputs: this.numInputs,
             numOutputs: this.numOutputs,
             numHidden: this.numHidden,
@@ -339,6 +351,9 @@ class SparseNetwork {
         const obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         if (!obj) return;
 
+        this.name = obj.name || this.name;
+        this.inputLabels = obj.inputLabels || this.inputLabels;
+        this.outputLabels = obj.outputLabels || this.outputLabels;
         this.numInputs = obj.numInputs;
         this.numOutputs = obj.numOutputs;
         this.numHidden = obj.numHidden || 0;

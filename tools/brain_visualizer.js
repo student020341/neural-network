@@ -707,15 +707,17 @@ class BrainVisualizer {
      * Supports flexible signatures:
      * - track(entity)
      * - track(label, entity)
-     * - track(label, entity, accessor, viewMode)
+     * - track(label, entity, accessor, viewMode, isReplay)
      * 
      * @param {string|Object} label Human-readable label or the entity itself
      * @param {Object} [entity] Host creature/agent object
      * @param {function(Object): (DenseNetwork|SparseNetwork)} [accessor] Function to retrieve the brain from the entity
      * @param {string} [viewMode] Optional per-card view override: 'full' | 'eeg' | 'flow' | 'io'
+     * @param {boolean} [isReplay=false] True if displaying a recorded highlight replay reel
      */
-    track(label, entity, accessor, viewMode) {
+    track(label, entity, accessor, viewMode, isReplay = false) {
         if (label && typeof label === 'object') {
+            isReplay = Boolean(viewMode);
             viewMode = accessor;
             accessor = entity;
             entity = label;
@@ -730,7 +732,8 @@ class BrainVisualizer {
             label: label || "Brain",
             entity,
             accessor: typeof accessor === 'function' ? accessor : (e) => e?.brain || e,
-            viewMode: viewMode || null
+            viewMode: viewMode || null,
+            isReplay: Boolean(isReplay)
         });
 
         this._updateTitle();
@@ -749,9 +752,9 @@ class BrainVisualizer {
         this._recomputeFilterCache();
     }
 
-    inspect(label, entity, accessor, viewMode) {
+    inspect(label, entity, accessor, viewMode, isReplay = false) {
         this.clear();
-        this.track(label, entity, accessor, viewMode);
+        this.track(label, entity, accessor, viewMode, isReplay);
         this.open();
     }
 
@@ -886,7 +889,7 @@ class BrainVisualizer {
         let pruned = false;
         this.providers = this.providers.filter(p => {
             if (!p || p.entity == null) { pruned = true; return false; }
-            if (p.entity._remove || p.entity.isDead || p.entity.pooled) { pruned = true; return false; }
+            if (p.entity._remove || p.entity.isDead || p.entity.dead || p.entity.pooled) { pruned = true; return false; }
             try {
                 const brain = p.accessor(p.entity);
                 if (brain == null) { pruned = true; return false; }
@@ -896,6 +899,10 @@ class BrainVisualizer {
             }
             return true;
         });
+        if (pruned) {
+            this._updateTitle();
+            this._recomputeFilterCache();
+        }
 
         const cw = this.canvas.clientWidth;
         const ch = this.canvas.clientHeight;
@@ -949,7 +956,7 @@ class BrainVisualizer {
             const filterData = this._getFilterData(brain);
 
             // Compute dynamic card dimensions for this mode
-            const layout = this._computeCardLayout(ctx, brain, mode);
+            const layout = this._computeCardLayout(ctx, brain, mode, p.entity);
 
             // --- Whole-Card Viewport Frustum Culling ---
             const cardTop = currentY;
@@ -993,6 +1000,11 @@ class BrainVisualizer {
                 }
             }
 
+            // Draw Real-time Creature Camera Viewport if entity is tracked
+            if (layout.entityWidth > 0) {
+                this._drawEntityCamera(ctx, p, layout);
+            }
+
             ctx.restore();
 
             currentY += layout.height + cardGapY;
@@ -1001,7 +1013,74 @@ class BrainVisualizer {
         ctx.restore();
     }
 
-    _computeCardLayout(ctx, brain, mode) {
+    _drawEntityCamera(ctx, p, layout) {
+        const boxX = layout.width - layout.entityWidth + 8;
+        const boxY = 34;
+        const boxW = layout.entityWidth - 18;
+        const boxH = layout.height - 46;
+
+        ctx.save();
+
+        // Outer Camera Container Frame
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+        ctx.fillStyle = "rgba(10, 16, 26, 0.92)";
+        ctx.fill();
+        ctx.strokeStyle = p.isReplay ? "#f59e0b" : "#38bdf8";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Header Title Banner
+        ctx.font = "bold 9.5px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillStyle = p.isReplay ? "#fbbf24" : "#7dd3fc";
+        ctx.textAlign = "left";
+        const badge = p.isReplay ? "🎞️ REPLAY" : "🔴 LIVE CAM";
+        ctx.fillText(badge, boxX + 8, boxY + 14);
+
+        // Viewport Clip
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(boxX + 2, boxY + 18, boxW - 4, boxH - 34);
+        ctx.clip();
+
+        // Subtle circular radar / depth guide
+        const cx = boxX + boxW / 2;
+        const cy = boxY + 18 + (boxH - 34) / 2;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Draw Entity Centered
+        const ent = p.entity;
+        if (ent) {
+            if (typeof ent.drawPreview === "function") {
+                ent.drawPreview(ctx, cx, cy);
+            } else if (typeof ent.draw === "function") {
+                const origX = ent.x;
+                const origY = ent.y;
+                ent.x = cx;
+                ent.y = cy;
+                try { ent.draw(ctx); } catch (_) {}
+                ent.x = origX;
+                ent.y = origY;
+            }
+        }
+        ctx.restore();
+
+        // Footer Telemetry
+        ctx.font = "9px -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillStyle = "#94a3b8";
+        ctx.textAlign = "center";
+        const scoreVal = ent?.score !== undefined ? `Pts: ${ent.score}` : (ent?.size ? `S:${Math.round(ent.size)}` : "");
+        const hungerVal = ent?.hunger !== undefined ? ` • H:${Math.round(ent.hunger * 100)}%` : "";
+        ctx.fillText(`${scoreVal}${hungerVal}`, cx, boxY + boxH - 4);
+
+        ctx.restore();
+    }
+
+    _computeCardLayout(ctx, brain, mode, entity = null) {
         ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
 
         const isDense = brain instanceof DenseNetwork || Boolean(brain.layerSizes);
@@ -1022,15 +1101,17 @@ class BrainVisualizer {
         }
 
         let maxInTextWidth = 50;
+        const inLabels = brain.inputLabels || entity?.inputLabels || entity?.brain?.inputLabels;
         for (let i = 0; i < numInputs; i++) {
-            const label = brain.inputLabels?.[i] || `In ${i}`;
+            const label = inLabels?.[i] || `In ${i}`;
             const metrics = ctx.measureText(`${label} [0.00]`);
             if (metrics.width > maxInTextWidth) maxInTextWidth = metrics.width;
         }
 
         let maxOutTextWidth = 50;
+        const outLabels = brain.outputLabels || entity?.outputLabels || entity?.brain?.outputLabels;
         for (let i = 0; i < numOutputs; i++) {
-            const label = brain.outputLabels?.[i] || `Out ${i}`;
+            const label = outLabels?.[i] || `Out ${i}`;
             const metrics = ctx.measureText(`[0.00] ${label}`);
             if (metrics.width > maxOutTextWidth) maxOutTextWidth = metrics.width;
         }
@@ -1065,6 +1146,11 @@ class BrainVisualizer {
             height = Math.max(160, topPadding + maxNodesInCol * rowSpacing + bottomPadding);
         }
 
+        // Entity Viewport Space on right of card
+        const hasEntity = entity && (typeof entity.draw === "function" || typeof entity.drawPreview === "function");
+        const entityWidth = hasEntity ? 146 : 0;
+        width += entityWidth;
+
         return {
             width,
             height,
@@ -1073,7 +1159,8 @@ class BrainVisualizer {
             colSpacing,
             rowSpacing,
             topPadding,
-            maxNodesInCol
+            maxNodesInCol,
+            entityWidth
         };
     }
 
@@ -1881,10 +1968,12 @@ class BrainVisualizer {
 
         // Node Label resolution
         let labelText = "";
+        const inLabels = brain.inputLabels || brain._inputLabels || brain.entity?.inputLabels;
+        const outLabels = brain.outputLabels || brain._outputLabels || brain.entity?.outputLabels;
         if (isInput) {
-            labelText = brain.inputLabels?.[index] || `In ${index}`;
+            labelText = inLabels?.[index] || `In ${index}`;
         } else if (isOutput) {
-            labelText = brain.outputLabels?.[index] || `Out ${index}`;
+            labelText = outLabels?.[index] || `Out ${index}`;
         } else {
             labelText = `H ${index}`;
         }

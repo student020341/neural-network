@@ -134,7 +134,12 @@ class DenseNetwork {
      * @returns {DenseNetwork}
      */
     clone() {
-        const cloneNet = new DenseNetwork(this.layerSizes);
+        const cloneNet = new DenseNetwork({
+            layerSizes: this.layerSizes,
+            name: this.name,
+            inputLabels: this.inputLabels ? [...this.inputLabels] : null,
+            outputLabels: this.outputLabels ? [...this.outputLabels] : null
+        });
         for (let l = 0; l < this.weights.length; l++) {
             cloneNet.weights[l].set(this.weights[l]);
             cloneNet.biases[l].set(this.biases[l]);
@@ -177,6 +182,9 @@ class DenseNetwork {
     toJSON() {
         return {
             type: 'DenseNetwork',
+            name: this.name,
+            inputLabels: this.inputLabels,
+            outputLabels: this.outputLabels,
             layerSizes: this.layerSizes,
             weights: this.weights.map(w => Array.from(w)),
             biases: this.biases.map(b => Array.from(b)),
@@ -191,6 +199,9 @@ class DenseNetwork {
         let obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         if (!obj || !obj.layerSizes) return;
 
+        this.name = obj.name || this.name;
+        this.inputLabels = obj.inputLabels || this.inputLabels;
+        this.outputLabels = obj.outputLabels || this.outputLabels;
         this._initializeNetwork(obj.layerSizes);
         if (obj.weights) {
             for (let l = 0; l < obj.weights.length; l++) {

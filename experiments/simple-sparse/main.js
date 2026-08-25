@@ -1,51 +1,597 @@
-// data
-//
-//
+// Aquarium Ecosystem Controller & Evolution Engine
 
 /** @type CanvasRenderingContext2D */
 const ctx = canvasContext2D;
 
-const bounds = getWorldBounds();
+// 1. Responsive World Setup
+function setupResponsiveWorld() {
+    const isLandscape = window.innerWidth >= window.innerHeight;
+    if (isLandscape) {
+        setWorld(800, 520, 'fit', true);
+    } else {
+        setWorld(520, 800, 'fit', true);
+    }
+}
+setupResponsiveWorld();
+window.addEventListener("resize", setupResponsiveWorld);
 
-const fish = new TurnFish(100, 100, bounds);
-resizeCallbacks.push((c) => fish.onResize(c));
-
-// functions
-//
-//
-
-// Real-time Multi-Brain Visualizer & Performance Telemetry
-const fpsMeter = new FPSMeter({ position: 'bottom-right' });
-const visualizer = new BrainVisualizer({ width: 480, height: 320, open: false });
-// visualizer.track("Fish", fish, (f) => f.brain);
-// visualizer.track("Hopper", hopper, (h) => h.brain);
-// visualizer.track("Flower", flower, (fl) => fl.brain);
-
-// Click creature on canvas to inspect solely, or double click to restore all 3
-canvas.addEventListener("click", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    if (Math.hypot(clickX - fish.x, clickY - fish.y) < 60) {
-        visualizer.inspect("Fish", fish, (f) => f.brain);
+let bounds = getWorldBounds();
+resizeCallbacks.push((b) => {
+    bounds = b;
+    for (const list of [turnFishes, crabs, jellies, predators, eels, foods, carcasses]) {
+        list.forEach(e => e.onResize && e.onResize(bounds));
     }
 });
 
-// logic
+// 2. Evolutionary Lineage Registry with Size Classifications & Highlight Clips
+const bestBrains = {
+    TurnFish: {
+        small: { brain: null, score: 0, highlights: [] },
+        medium: { brain: null, score: 0, highlights: [] },
+        large: { brain: null, score: 0, highlights: [] }
+    },
+    Crab: {
+        small: { brain: null, score: 0, highlights: [] },
+        medium: { brain: null, score: 0, highlights: [] },
+        large: { brain: null, score: 0, highlights: [] }
+    },
+    Jellyfish: {
+        small: { brain: null, score: 0, highlights: [] },
+        medium: { brain: null, score: 0, highlights: [] },
+        large: { brain: null, score: 0, highlights: [] }
+    },
+    Predator: {
+        small: { brain: null, score: 0, highlights: [] },
+        medium: { brain: null, score: 0, highlights: [] },
+        large: { brain: null, score: 0, highlights: [] }
+    },
+    Eel: {
+        small: { brain: null, score: 0, highlights: [] },
+        medium: { brain: null, score: 0, highlights: [] },
+        large: { brain: null, score: 0, highlights: [] }
+    }
+};
+
+// 3. Ecosystem Populations & Caps
+const CAPS = {
+    TurnFish: 46,
+    Crab: 14,
+    Jellyfish: 14,
+    Predator: 7,
+    Eel: 10,
+    Global: 95
+};
+
+const turnFishes = [];
+const crabs = [];
+const jellies = [];
+const predators = [];
+const eels = [];
+const foods = [];
+const carcasses = [];
+
+let predatorKillCount = 0;
+let foodSpawnTimer = 0;
+let creatureSpawnTimer = 0;
+
+// Helper to record champion brains categorized by species and size tier
+function recordDeath(creature) {
+    const species = creature.species;
+    const tier = creature.sizeTier || "medium";
+    if (!species || !bestBrains[species] || !bestBrains[species][tier]) return;
+
+    if (creature.score > bestBrains[species][tier].score) {
+        bestBrains[species][tier].score = creature.score;
+        bestBrains[species][tier].brain = creature.brain.clone();
+        bestBrains[species][tier].highlights = creature.highlightClips && creature.highlightClips.length > 0 
+            ? creature.highlightClips.map(c => [...c]) 
+            : [];
+        updateChampionButtons();
+    }
+
+    // Convert dead creatures into sinking floor carcasses (unless exploded or split via fission)
+    if (!creature.exploded && !creature.split) {
+        carcasses.push(new Carcass(creature.x, creature.y, creature.size, species, bounds));
+    }
+}
+
+// 4. Edge Spawning Hierarchy with Size Stratification
+function spawnEdgeEntity(species) {
+    const fromLeft = Math.random() < 0.5;
+    const startX = fromLeft ? -25 : bounds.w + 25;
+    const startY = randRange(40, bounds.h - 60);
+
+    if (species === "TurnFish") {
+        const size = randRange(12, 22);
+        const tier = size < 15.5 ? "small" : (size < 19 ? "medium" : "large");
+        const template = bestBrains.TurnFish[tier].brain;
+        turnFishes.push(new TurnFish(startX, startY, bounds, template, size));
+    } else if (species === "Crab") {
+        const size = randRange(11, 19);
+        const tier = size < 13.5 ? "small" : (size < 16.5 ? "medium" : "large");
+        const template = bestBrains.Crab[tier].brain;
+        crabs.push(new Crab(startX, bounds.h - 10, bounds, template, size));
+    } else if (species === "Jellyfish") {
+        const size = randRange(22, 58);
+        const tier = size < 32 ? "small" : (size < 46 ? "medium" : "large");
+        const topY = randRange(-20, 60);
+        const template = bestBrains.Jellyfish[tier].brain;
+        jellies.push(new Jellyfish(startX, topY, bounds, template, size));
+    } else if (species === "Predator") {
+        const size = randRange(24, 68);
+        const tier = size < 36 ? "small" : (size < 52 ? "medium" : "large");
+        const template = bestBrains.Predator[tier].brain;
+        predators.push(new PredatorFish(startX, startY, bounds, template, size));
+    } else if (species === "Eel") {
+        const size = randRange(20, 38);
+        const tier = size < 25 ? "small" : (size < 32 ? "medium" : "large");
+        const template = bestBrains.Eel[tier].brain;
+        eels.push(new RibbonEel(startX, startY, bounds, template, size));
+    }
+}
+
+// Initial Starter Population
+for (let i = 0; i < 16; i++) {
+    const size = randRange(12, 22);
+    turnFishes.push(new TurnFish(randRange(50, bounds.w - 50), randRange(50, bounds.h - 100), bounds, null, size));
+}
+for (let i = 0; i < 8; i++) {
+    foods.push(new Food(randRange(40, bounds.w - 40), randRange(0, bounds.h * 0.5), bounds));
+}
+
+// 5. Telemetry, Slide-out Drawer & Highlight Reel Engine
+const fpsMeter = new FPSMeter({ position: 'bottom-right' });
+const visualizer = new BrainVisualizer({ width: 480, height: 320, open: false });
+
+const drawer = document.getElementById("drawer");
+const drawerHandle = document.getElementById("drawer-handle");
+const replayBanner = document.getElementById("replay-banner");
+const championsContainer = document.getElementById("champions-container");
+
+// Drawer toggle
+drawerHandle.addEventListener("click", () => {
+    drawer.classList.toggle("open");
+});
+
+// Highlight Replayer State
+let activeReplay = null; // { species, tier, brain, previewEntity, timer }
+
+function stopHighlightReplay() {
+    if (activeReplay) {
+        if (activeReplay.timer) clearInterval(activeReplay.timer);
+        activeReplay = null;
+    }
+    if (replayBanner) {
+        replayBanner.style.display = "none";
+    }
+    document.querySelectorAll(".champ-btn").forEach(b => b.classList.remove("active"));
+}
+
+// Helper to create an animated preview creature avatar for champion replays
+function createPreviewCreature(species, tier) {
+    let size = 16;
+    if (species === "TurnFish") {
+        size = tier === "small" ? 13 : (tier === "medium" ? 17 : 21);
+        const f = new TurnFish(0, 0, bounds, null, size);
+        f.invulnerableTimer = 0;
+        return f;
+    } else if (species === "Crab") {
+        size = tier === "small" ? 12 : (tier === "medium" ? 15 : 18);
+        const c = new Crab(0, 0, bounds, null, size);
+        c.invulnerableTimer = 0;
+        return c;
+    } else if (species === "Jellyfish") {
+        size = tier === "small" ? 26 : (tier === "medium" ? 38 : 52);
+        const j = new Jellyfish(0, 0, bounds, null, size);
+        j.invulnerableTimer = 0;
+        return j;
+    } else if (species === "Predator") {
+        size = tier === "small" ? 32 : (tier === "medium" ? 48 : 66);
+        const p = new PredatorFish(0, 0, bounds, null, size);
+        p.invulnerableTimer = 0;
+        return p;
+    } else if (species === "Eel") {
+        size = tier === "small" ? 22 : (tier === "medium" ? 28 : 35);
+        const e = new RibbonEel(0, 0, bounds, null, size);
+        e.invulnerableTimer = 0;
+        return e;
+    }
+    return null;
+}
+
+function playChampionHighlights(species, tier) {
+    stopHighlightReplay();
+
+    const record = bestBrains[species]?.[tier];
+    if (!record || !record.brain) {
+        return;
+    }
+
+    const brain = record.brain.clone();
+    const clips = record.highlights || [];
+
+    const previewEntity = createPreviewCreature(species, tier);
+    if (previewEntity) {
+        previewEntity.score = record.score;
+        previewEntity.hunger = 0.15;
+    }
+
+    const label = `🏆 Champion ${species} [${tier.toUpperCase()}]`;
+    visualizer.inspect(label, previewEntity || { brain }, () => brain, "full", true);
+
+    if (replayBanner) {
+        replayBanner.style.display = "block";
+        replayBanner.innerHTML = clips.length > 0 
+            ? `▶ <strong>Replaying Champion Highlights (${clips.length} Clips)</strong> • Score: ${record.score}`
+            : `⚡ <strong>Live Synaptic Stream</strong> • Score: ${record.score}`;
+    }
+
+    let clipIdx = 0;
+    let frameIdx = 0;
+    let synthTime = 0;
+
+    const timer = setInterval(() => {
+        let inputSnapshot = null;
+
+        if (clips.length > 0) {
+            const currentClip = clips[clipIdx];
+            if (currentClip && currentClip[frameIdx]) {
+                inputSnapshot = currentClip[frameIdx];
+            }
+            frameIdx++;
+            if (frameIdx >= currentClip.length) {
+                frameIdx = 0;
+                clipIdx = (clipIdx + 1) % clips.length;
+            }
+        } else {
+            // Synthetic harmonic wave signal if no clips recorded yet
+            synthTime += 0.08;
+            const numIn = brain.numInputs;
+            const inputs = new Float32Array(numIn);
+            for (let i = 0; i < numIn; i++) {
+                inputs[i] = Math.sin(synthTime + i * 1.2) * 0.5 + 0.5;
+            }
+            inputSnapshot = inputs;
+        }
+
+        if (inputSnapshot) {
+            const outputs = brain.activate(inputSnapshot);
+
+            // Reenact physical movements in preview creature avatar with time advancement
+            if (outputs && previewEntity) {
+                previewEntity.time += 0.06;
+                previewEntity.age += 0.06;
+                previewEntity.outputs = outputs;
+
+                if (species === "TurnFish") {
+                    const steer = outputs[0];
+                    const torque = outputs[1] || 0.5;
+                    if (steer < 0.4) previewEntity.angle -= (0.4 - steer) * torque * 0.9;
+                    else if (steer > 0.6) previewEntity.angle += (steer - 0.6) * torque * 0.9;
+                    previewEntity.mouthOpen = outputs[3] > 0.5;
+                } else if (species === "Predator") {
+                    const steer = outputs[0];
+                    const torque = outputs[1] || 0.5;
+                    if (steer < 0.4) previewEntity.angle -= (0.4 - steer) * torque * 0.9;
+                    else if (steer > 0.6) previewEntity.angle += (steer - 0.6) * torque * 0.9;
+                    previewEntity.mouthOpen = outputs[3] > 0.5;
+                    const targetAperture = previewEntity.mouthOpen ? 1.0 : 0.0;
+                    previewEntity.mouthAperture += (targetAperture - previewEntity.mouthAperture) * 0.4;
+                } else if (species === "Crab") {
+                    previewEntity.mouthOpen = outputs[1] > 0.6;
+                    previewEntity.pincerActive = outputs[2] > 0.5;
+                } else if (species === "Jellyfish") {
+                    if (outputs[0] > 0.45) previewEntity.pulsePower = 1.0;
+                    if (previewEntity.pulsePower > 0) previewEntity.pulsePower = Math.max(0, previewEntity.pulsePower - 0.15);
+                    const tilt = outputs[1] || 0.5;
+                    const maxLean = Math.PI / 3;
+                    previewEntity.tiltAngle = (tilt - 0.5) * 2 * maxLean;
+                    previewEntity.jetActive = outputs[2] > 0.5;
+                    if (previewEntity.jetActive) previewEntity.jetTimer = 0.22;
+                    if (previewEntity.jetTimer > 0) previewEntity.jetTimer -= 0.04;
+                } else if (species === "Eel") {
+                    const steer = outputs[0];
+                    if (steer < 0.4) previewEntity.angle -= (0.4 - steer) * 0.8;
+                    else if (steer > 0.6) previewEntity.angle += (steer - 0.6) * 0.8;
+                    previewEntity.mouthOpen = outputs[2] > 0.5;
+                }
+            }
+        }
+    }, 60); // ~16 FPS neural pulse replay
+
+    activeReplay = { species, tier, brain, previewEntity, timer };
+}
+
+// Populate Champion Buttons in Drawer
+function updateChampionButtons() {
+    if (!championsContainer) return;
+
+    const speciesList = [
+        { key: "TurnFish", label: "🐟 Spinner" },
+        { key: "Crab", label: "🦀 Crab" },
+        { key: "Jellyfish", label: "🪼 Jelly" },
+        { key: "Predator", label: "🦈 Predator" },
+        { key: "Eel", label: "🐍 Eel" }
+    ];
+
+    championsContainer.innerHTML = speciesList.map(s => {
+        const smallScore = bestBrains[s.key].small.score;
+        const medScore = bestBrains[s.key].medium.score;
+        const largeScore = bestBrains[s.key].large.score;
+
+        return `
+            <div class="champ-row">
+                <span class="champ-name">${s.label}</span>
+                <div class="btn-group">
+                    <button class="champ-btn" data-sp="${s.key}" data-tier="small" title="Small (Score: ${smallScore})">S ${smallScore > 0 ? smallScore : '-'}</button>
+                    <button class="champ-btn" data-sp="${s.key}" data-tier="medium" title="Medium (Score: ${medScore})">M ${medScore > 0 ? medScore : '-'}</button>
+                    <button class="champ-btn" data-sp="${s.key}" data-tier="large" title="Large (Score: ${largeScore})">L ${largeScore > 0 ? largeScore : '-'}</button>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    championsContainer.querySelectorAll(".champ-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const sp = btn.getAttribute("data-sp");
+            const tier = btn.getAttribute("data-tier");
+            playChampionHighlights(sp, tier);
+            btn.classList.add("active");
+        });
+    });
+}
+updateChampionButtons();
+
+// Click creature to inspect live brain, or click empty space to drop food
+canvas.addEventListener("click", (e) => {
+    stopHighlightReplay();
+
+    const mouseWorld = screenToWorld(e.clientX, e.clientY);
+    const clickX = mouseWorld.x;
+    const clickY = mouseWorld.y;
+
+    const allCreatures = [...predators, ...eels, ...jellies, ...crabs, ...turnFishes];
+    let clickedCreature = null;
+
+    for (const c of allCreatures) {
+        if (!c.dead && dist({ x: clickX, y: clickY }, c) < (c.size || 20) * 1.2) {
+            clickedCreature = c;
+            break;
+        }
+    }
+
+    if (clickedCreature) {
+        const label = `${clickedCreature.species} (${clickedCreature.sizeTier}, S:${Math.round(clickedCreature.size)})`;
+        visualizer.inspect(label, clickedCreature, (ent) => ent.brain);
+    } else {
+        foods.push(new Food(clickX, clickY, bounds));
+    }
+});
+
+// 6. Simulation Logic Step
 const logic = (dt) => {
-    fish.act(dt);
+    const totalCreatures = turnFishes.length + crabs.length + jellies.length + predators.length + eels.length;
+
+    // A. Food Spawning
+    foodSpawnTimer += dt;
+    if (foodSpawnTimer >= 0.55 && foods.length < 22) {
+        foodSpawnTimer = 0;
+        foods.push(new Food(randRange(30, bounds.w - 30), 0, bounds));
+    }
+
+    // B. Hierarchical Edge Spawning
+    creatureSpawnTimer += dt;
+    if (creatureSpawnTimer >= 0.75 && totalCreatures < CAPS.Global) {
+        creatureSpawnTimer = 0;
+
+        // Condition 1: TurnFish (Foundation)
+        if (turnFishes.length < CAPS.TurnFish) {
+            spawnEdgeEntity("TurnFish");
+        }
+
+        // Condition 2: Crabs (Unlock if detritus or carcasses on floor)
+        const settledDebris = foods.filter(f => f.state === "settled").length + carcasses.filter(c => c.state === "settled").length;
+        if (settledDebris > 0 && crabs.length < CAPS.Crab) {
+            spawnEdgeEntity("Crab");
+        }
+
+        // Condition 3: Predators (Unlock when prey population is thriving)
+        if (turnFishes.length >= 4 && crabs.length >= 1 && predators.length < CAPS.Predator) {
+            spawnEdgeEntity("Predator");
+        }
+
+        // Condition 4: Jellyfish (Unlock after Predator makes a kill)
+        if (predatorKillCount >= 1 && jellies.length < CAPS.Jellyfish) {
+            spawnEdgeEntity("Jellyfish");
+        }
+
+        // Condition 5: Ribbon Eels (Unlock whenever carcasses appear in the tank)
+        if (carcasses.length > 0 && eels.length < CAPS.Eel) {
+            spawnEdgeEntity("Eel");
+        }
+    }
+
+    // C. Seafloor Sediment Sinking
+    const floorItems = [...foods.filter(f => f.state === "settled"), ...carcasses.filter(c => c.state === "settled")];
+    if (floorItems.length > 8) {
+        for (const item of floorItems) {
+            item.y += 2.5 * dt;
+        }
+    }
+
+    // D. Update Foods & Carcasses
+    for (let i = foods.length - 1; i >= 0; i--) {
+        const f = foods[i];
+        f.update(dt, bounds);
+        if (f.state === "dead") foods.splice(i, 1);
+    }
+    for (let i = carcasses.length - 1; i >= 0; i--) {
+        const c = carcasses[i];
+        c.update(dt, bounds);
+        if (c.state === "dead") carcasses.splice(i, 1);
+    }
+
+    // E. Update TurnFish
+    for (let i = turnFishes.length - 1; i >= 0; i--) {
+        const f = turnFishes[i];
+        f.act(dt, foods, crabs, predators, jellies);
+        if (f.dead) {
+            recordDeath(f);
+            turnFishes.splice(i, 1);
+        }
+    }
+
+    // F. Update Crabs
+    for (let i = crabs.length - 1; i >= 0; i--) {
+        const c = crabs[i];
+        c.act(dt, foods, carcasses, crabs, predators, jellies, (crab, tossedJelly) => {
+            // Spawn a food pellet at the location the jellyfish was tossed from!
+            foods.push(new Food(tossedJelly.x, tossedJelly.y, bounds));
+        });
+        if (c.dead) {
+            recordDeath(c);
+            crabs.splice(i, 1);
+        }
+    }
+
+    // G. Update Jellyfish
+    for (let i = jellies.length - 1; i >= 0; i--) {
+        const j = jellies[i];
+        j.act(dt, foods, jellies);
+        if (j.dead) {
+            recordDeath(j);
+
+            // Cascading Fission on Death:
+            // Large -> 2 Medium (inherit medium champion brain), Medium -> 2 Small (inherit small champion brain)
+            if (j.sizeTier === "large" && jellies.length + 1 < CAPS.Jellyfish * 1.5) {
+                j.split = true;
+                const medTemplate = bestBrains.Jellyfish.medium.brain || j.brain.clone();
+                for (let k = 0; k < 2; k++) {
+                    const offset = k === 0 ? -16 : 16;
+                    const child = new Jellyfish(clamp(j.x + offset, 25, bounds.w - 25), j.y, bounds, medTemplate, randRange(34, 44));
+                    child.hunger = 0.20; // 80% fullness
+                    child.vx = offset * 2.5;
+                    child.invulnerableTimer = 2.0;
+                    jellies.push(child);
+                }
+            } else if (j.sizeTier === "medium" && jellies.length + 1 < CAPS.Jellyfish * 1.5) {
+                j.split = true;
+                const smallTemplate = bestBrains.Jellyfish.small.brain || j.brain.clone();
+                for (let k = 0; k < 2; k++) {
+                    const offset = k === 0 ? -12 : 12;
+                    const child = new Jellyfish(clamp(j.x + offset, 20, bounds.w - 20), j.y, bounds, smallTemplate, randRange(22, 28));
+                    child.hunger = 0.20; // 80% fullness
+                    child.vx = offset * 2.5;
+                    child.invulnerableTimer = 2.0;
+                    jellies.push(child);
+                }
+            }
+
+            jellies.splice(i, 1);
+        }
+    }
+
+    // H. Update Ribbon Eels (Mid-water carcass scavengers & jelly slipstream drivers)
+    for (let i = eels.length - 1; i >= 0; i--) {
+        const e = eels[i];
+        e.act(dt, carcasses, jellies, predators);
+        if (e.dead) {
+            recordDeath(e);
+            eels.splice(i, 1);
+        }
+    }
+
+    // I. Update Predator Fish (Can also hunt smaller predators)
+    for (let i = predators.length - 1; i >= 0; i--) {
+        const p = predators[i];
+        p.act(dt, turnFishes, crabs, jellies, predators, 
+            (hunter, prey) => {
+                predatorKillCount++;
+            },
+            (explodedPredator) => {
+                // Burst into scattered food pellets
+                const numPellets = Math.floor(randRange(10, 16));
+                for (let k = 0; k < numPellets; k++) {
+                    const ang = (k / numPellets) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+                    const spread = randRange(12, explodedPredator.radius * 1.6);
+                    const px = clamp(explodedPredator.x + Math.cos(ang) * spread, 10, bounds.w - 10);
+                    const py = clamp(explodedPredator.y + Math.sin(ang) * spread, 10, bounds.h - 15);
+                    foods.push(new Food(px, py, bounds));
+                }
+            }
+        );
+        if (p.dead) {
+            recordDeath(p);
+            predators.splice(i, 1);
+        }
+    }
+
+    // J. Telemetry HUD Counters
+    const popTotal = document.getElementById("pop-total");
+    if (popTotal) popTotal.textContent = `${totalCreatures}/${CAPS.Global}`;
+
+    const cntFish = document.getElementById("cnt-fish");
+    if (cntFish) cntFish.textContent = turnFishes.length;
+
+    const cntCrabs = document.getElementById("cnt-crabs");
+    if (cntCrabs) cntCrabs.textContent = crabs.length;
+
+    const cntJellies = document.getElementById("cnt-jellies");
+    if (cntJellies) cntJellies.textContent = jellies.length;
+
+    const cntPredators = document.getElementById("cnt-predators");
+    if (cntPredators) cntPredators.textContent = predators.length;
+
+    const cntEels = document.getElementById("cnt-eels");
+    if (cntEels) cntEels.textContent = eels.length;
+
+    const cntFood = document.getElementById("cnt-food");
+    if (cntFood) cntFood.textContent = foods.length;
+
+    const cntKills = document.getElementById("cnt-kills");
+    if (cntKills) cntKills.textContent = predatorKillCount;
 };
 
-// render
+// 7. Layered Render Step
 const render = (_, cw, ch) => {
-    // clear what was drawn before
-    ctx.clearRect(0, 0, cw, ch);
+    // Clear entire screen (including letterbox/pillarbox margins where edge entities enter)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
-    // draw creatures
-    fish.draw(ctx);
+    // Subtle Sandy Seafloor Line
+    ctx.fillStyle = "rgba(180, 150, 90, 0.15)";
+    ctx.fillRect(0, bounds.h - 10, bounds.w, 10);
+    ctx.strokeStyle = "rgba(210, 180, 120, 0.25)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, bounds.h - 10);
+    ctx.lineTo(bounds.w, bounds.h - 10);
+    ctx.stroke();
+
+    // Layer 1: Sunken Carcasses
+    for (const c of carcasses) c.draw(ctx);
+
+    // Layer 2: Food Pellets (Falling & Settled)
+    for (const f of foods) f.draw(ctx);
+
+    // Layer 3: Crabs (Crawling floor perimeter)
+    for (const c of crabs) c.draw(ctx);
+
+    // Layer 4: TurnFish (Spinners - Pelagic swimmers)
+    for (const f of turnFishes) f.draw(ctx);
+
+    // Layer 5: Ribbon Eels (Sinuous mid-water carcass hunters)
+    for (const e of eels) e.draw(ctx);
+
+    // Layer 6: Jellyfish (Translucent bells rendering OVER TurnFish & Eels)
+    for (const j of jellies) j.draw(ctx);
+
+    // Layer 7: Predator Fish (Apex hunters in foreground)
+    for (const p of predators) p.draw(ctx);
 };
 
-// start
-
+// Start Main Game Loop
 loop([logic, render]);

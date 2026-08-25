@@ -21,6 +21,8 @@ const getWorldBounds = () => {
 };
 
 let currentScale = 1;
+let currentOffsetX = 0;
+let currentOffsetY = 0;
 
 const applyTransform = () => {
     const dpr = window.devicePixelRatio || 1;
@@ -41,15 +43,34 @@ const applyTransform = () => {
         const scaleX = (cw * dpr) / targetW;
         const scaleY = (ch * dpr) / targetH;
         currentScale = Math.min(scaleX, scaleY);
+        currentOffsetX = 0;
+        currentOffsetY = 0;
         canvasContext2D.setTransform(scaleX, 0, 0, scaleY, 0, 0);
     } else {
         // Uniform fit: preserves square aspect ratio, centered
         const scale = Math.min((cw * dpr) / targetW, (ch * dpr) / targetH);
         currentScale = scale;
-        const offsetX = ((cw * dpr) - targetW * scale) / 2;
-        const offsetY = ((ch * dpr) - targetH * scale) / 2;
-        canvasContext2D.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+        currentOffsetX = ((cw * dpr) - targetW * scale) / 2;
+        currentOffsetY = ((ch * dpr) - targetH * scale) / 2;
+        canvasContext2D.setTransform(scale, 0, 0, scale, currentOffsetX, currentOffsetY);
     }
+};
+
+/**
+ * Converts screen/client coordinates (e.g. from mouse events) into virtual world coordinates.
+ * @param {number} clientX 
+ * @param {number} clientY 
+ * @returns {{x: number, y: number}}
+ */
+const screenToWorld = (clientX, clientY) => {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const px = (clientX - rect.left) * dpr;
+    const py = (clientY - rect.top) * dpr;
+    return {
+        x: (px - currentOffsetX) / currentScale,
+        y: (py - currentOffsetY) / currentScale
+    };
 };
 
 /**

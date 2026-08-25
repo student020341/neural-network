@@ -2,14 +2,14 @@
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-        <title>Simple Sparse Creatures</title>
+        <title>Simple Sparse Creatures - Aquarium Ecosystem</title>
         <style>
             body {
-                background: black;
+                background: #060913;
                 color: white;
                 margin: 0;
                 overflow: hidden;
-                font-family: sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
 
             canvas {
@@ -39,18 +39,248 @@
                 color: #fff;
                 border-color: #666;
             }
+
+            /* Slide-out Peek Drawer HUD */
+            #drawer {
+                position: fixed;
+                top: 12px;
+                right: 0;
+                width: 320px;
+                max-width: 90vw;
+                background: rgba(10, 16, 28, 0.88);
+                backdrop-filter: blur(8px);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-right: none;
+                border-radius: 8px 0 0 8px;
+                padding: 14px 16px 14px 44px;
+                font-size: 12px;
+                color: #cbd5e1;
+                z-index: 100;
+                transform: translateX(calc(100% - 36px));
+                transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+                cursor: default;
+                user-select: none;
+            }
+
+            #drawer:hover, #drawer.open {
+                transform: translateX(0);
+                box-shadow: -4px 6px 30px rgba(0, 0, 0, 0.7);
+            }
+
+            /* Pull tab handle */
+            #drawer-handle {
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 36px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                background: rgba(255, 255, 255, 0.04);
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px 0 0 8px;
+                cursor: pointer;
+                color: #58a6ff;
+                font-size: 14px;
+                transition: background 0.2s;
+            }
+
+            #drawer-handle:hover {
+                background: rgba(88, 166, 255, 0.15);
+            }
+
+            #drawer-handle .handle-icon {
+                writing-mode: vertical-rl;
+                letter-spacing: 2px;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
+                margin-top: 8px;
+                color: #8b949e;
+            }
+
+            .hud-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: #f0f6fc;
+                margin-bottom: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .hud-section {
+                margin-bottom: 12px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            }
+
+            .hud-stats-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+                font-size: 11.5px;
+                color: #94a3b8;
+            }
+
+            .hud-stat-item strong {
+                color: #f1f5f9;
+            }
+
+            /* Champion Inspection Rows */
+            .champ-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin: 4px 0;
+                font-size: 11.5px;
+            }
+
+            .champ-name {
+                color: #93c5fd;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .btn-group {
+                display: flex;
+                gap: 4px;
+            }
+
+            .champ-btn {
+                background: rgba(30, 41, 59, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                color: #94a3b8;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 10.5px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+            }
+
+            .champ-btn:hover {
+                background: #3b82f6;
+                color: #fff;
+                border-color: #60a5fa;
+                transform: scale(1.05);
+            }
+
+            .champ-btn.active {
+                background: #2563eb;
+                color: #fff;
+                border-color: #93c5fd;
+                box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+            }
+
+            .replay-status {
+                font-size: 11px;
+                color: #4ade80;
+                background: rgba(34, 197, 94, 0.1);
+                border: 1px solid rgba(34, 197, 94, 0.2);
+                border-radius: 4px;
+                padding: 4px 8px;
+                margin-top: 8px;
+                display: none;
+            }
+
+            /* Non-intrusive Toast Notifications */
+            #toast-container {
+                position: fixed;
+                bottom: 24px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 10000;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+                pointer-events: none;
+            }
+
+            .toast {
+                background: rgba(15, 23, 42, 0.92);
+                backdrop-filter: blur(8px);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                color: #f1f5f9;
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-size: 12px;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+                opacity: 0;
+                transform: translateY(12px);
+                transition: opacity 0.25s ease, transform 0.25s ease;
+                pointer-events: auto;
+            }
+
+            .toast.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
         </style>
     </head>
     <body>
         <a href="../../index.html" class="back-link">← All Experiments</a>
+        <div id="toast-container"></div>
+
+        <!-- Slide-out Peek Drawer -->
+        <div id="drawer">
+            <div id="drawer-handle" title="Toggle Ecosystem Dashboard">
+                <span>◀</span>
+                <span class="handle-icon">Telemetry</span>
+            </div>
+
+            <div class="hud-title">
+                <span>🌊 Aquarium Ecosystem</span>
+                <span id="pop-total" style="font-size:11px; color:#38bdf8;">0/95</span>
+            </div>
+
+            <div class="hud-section">
+                <div class="hud-stats-grid" id="stats-grid">
+                    <div class="hud-stat-item">🐟 Spinners: <strong id="cnt-fish">0</strong></div>
+                    <div class="hud-stat-item">🦀 Crabs: <strong id="cnt-crabs">0</strong></div>
+                    <div class="hud-stat-item">🪼 Jellies: <strong id="cnt-jellies">0</strong></div>
+                    <div class="hud-stat-item">🦈 Predators: <strong id="cnt-predators">0</strong></div>
+                    <div class="hud-stat-item">🐍 Eels: <strong id="cnt-eels">0</strong></div>
+                    <div class="hud-stat-item">🟢 Pellets: <strong id="cnt-food">0</strong></div>
+                    <div class="hud-stat-item">💀 Kills: <strong id="cnt-kills">0</strong></div>
+                </div>
+            </div>
+
+            <div class="hud-title" style="font-size:12px; margin-top:8px;">
+                <span>🧬 Champion Brain Highlight Reels</span>
+            </div>
+            <div id="champions-container">
+                <!-- Dynamically populated champion inspection buttons -->
+            </div>
+
+            <div id="replay-banner" class="replay-status"></div>
+
+            <div style="margin-top:10px; font-size:10.5px; color:#64748b; line-height:1.4;">
+                • Click creature: Live Brain<br/>
+                • Click empty canvas: Feed Pellet
+            </div>
+        </div>
+
         <canvas id="canvas"></canvas>
+
         <script src="../../utils.js"></script>
         <script src="../../lib.js"></script>
         <script src="../../networks/dense_network.js"></script>
         <script src="../../networks/sparse_network.js"></script>
         <script src="../../tools/fps_meter.js"></script>
         <script src="../../tools/brain_visualizer.js"></script>
+
+        <script src="food.js"></script>
         <script src="fish.js"></script>
+        <script src="crab.js"></script>
+        <script src="jellyfish.js"></script>
+        <script src="predator.js"></script>
+        <script src="eel.js"></script>
         <script src="main.js"></script>
     </body>
 </html>
