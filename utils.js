@@ -36,3 +36,50 @@ const uid = (prefix = "", len = 6) => {
     const hash = Math.random().toString(36).substring(2, 2 + len);
     return prefix ? `${prefix}_${hash}` : hash;
 };
+
+// High-performance Canvas CSS Color String Cache (Eliminates GC string allocations & CSS parser churn)
+const _hslCache = new Map();
+const getHsl = (h, s, l) => {
+    const ih = ((Math.round(h) % 360) + 360) % 360;
+    const is = clamp(Math.round(s), 0, 100);
+    const il = clamp(Math.round(l), 0, 100);
+    const key = (ih << 16) | (is << 8) | il;
+    let str = _hslCache.get(key);
+    if (!str) {
+        str = `hsl(${ih},${is}%,${il}%)`;
+        if (_hslCache.size > 2500) _hslCache.clear();
+        _hslCache.set(key, str);
+    }
+    return str;
+};
+
+const getHsla = (h, s, l, a) => {
+    const ih = ((Math.round(h) % 360) + 360) % 360;
+    const is = clamp(Math.round(s), 0, 100);
+    const il = clamp(Math.round(l), 0, 100);
+    const ia = clamp(Math.round(a * 100), 0, 100);
+    const key = (ih << 20) | (is << 14) | (il << 7) | ia;
+    let str = _hslCache.get(key);
+    if (!str) {
+        str = `hsla(${ih},${is}%,${il}%,${ia / 100})`;
+        if (_hslCache.size > 3500) _hslCache.clear();
+        _hslCache.set(key, str);
+    }
+    return str;
+};
+
+const _rgbaCache = new Map();
+const getRgba = (r, g, b, a) => {
+    const ir = clamp(Math.round(r), 0, 255);
+    const ig = clamp(Math.round(g), 0, 255);
+    const ib = clamp(Math.round(b), 0, 255);
+    const ia = clamp(Math.round(a * 100), 0, 100);
+    const key = (ir << 24) | (ig << 16) | (ib << 8) | ia;
+    let str = _rgbaCache.get(key);
+    if (!str) {
+        str = `rgba(${ir},${ig},${ib},${ia / 100})`;
+        if (_rgbaCache.size > 1500) _rgbaCache.clear();
+        _rgbaCache.set(key, str);
+    }
+    return str;
+};

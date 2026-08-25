@@ -131,40 +131,58 @@ class PredatorFish {
      */
     think(turnFishes = [], crabs = [], jellies = [], predators = []) {
         const maxDetectDist = Math.hypot(this.bounds.w, this.bounds.h) * 0.5;
+        const maxDetectDistSq = maxDetectDist * maxDetectDist;
 
-        // 1. Prey Detection
-        let nearestP = null, minPDist = Infinity;
+        // 1. Prey Detection via distSq
+        let nearestP = null, minPDistSq = maxDetectDistSq;
 
-        for (const f of turnFishes) {
+        for (let i = 0; i < turnFishes.length; i++) {
+            const f = turnFishes[i];
             if (f.dead || f.invulnerableTimer > 0) continue;
-            const d = dist(this, f);
-            if (d < minPDist) { minPDist = d; nearestP = f; }
+            const dx = f.x - this.x;
+            const dy = f.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minPDistSq) { minPDistSq = dSq; nearestP = f; }
         }
 
-        for (const c of crabs) {
+        for (let i = 0; i < crabs.length; i++) {
+            const c = crabs[i];
             if (c.dead || c.invulnerableTimer > 0) continue;
-            const d = dist(this, c);
-            const effectiveD = c.isAirborne ? d * 0.7 : d;
-            if (effectiveD < minPDist) { minPDist = effectiveD; nearestP = c; }
+            const dx = c.x - this.x;
+            const dy = c.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            const effectiveDSq = c.isAirborne ? dSq * 0.49 : dSq;
+            if (effectiveDSq < minPDistSq) { minPDistSq = effectiveDSq; nearestP = c; }
         }
 
-        for (const p of predators) {
+        for (let i = 0; i < predators.length; i++) {
+            const p = predators[i];
             if (p === this || p.dead || p.invulnerableTimer > 0) continue;
             if (this.size > p.size * 1.3) {
-                const d = dist(this, p);
-                if (d < minPDist) { minPDist = d; nearestP = p; }
+                const dx = p.x - this.x;
+                const dy = p.y - this.y;
+                if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+                const dSq = dx * dx + dy * dy;
+                if (dSq < minPDistSq) { minPDistSq = dSq; nearestP = p; }
             }
         }
 
         // Detect vulnerable tossed jellyfish as prime prey!
-        for (const j of jellies) {
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j.dead || j.invulnerableTimer > 0 || j.tossedTimer <= 0) continue;
-            const d = dist(this, j);
-            if (d < minPDist) { minPDist = d; nearestP = j; }
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minPDistSq) { minPDistSq = dSq; nearestP = j; }
         }
 
         this.nearestPrey = nearestP;
         if (nearestP) {
+            const minPDist = Math.sqrt(minPDistSq);
             let diff = Math.atan2(nearestP.y - this.y, nearestP.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -175,15 +193,20 @@ class PredatorFish {
         }
 
         // 2. Jellyfish Hazard Detection (Only hazardous if NOT tossed!)
-        let nearestJ = null, minJDist = Infinity;
-        for (const j of jellies) {
+        let nearestJ = null, minJDistSq = 220 * 220;
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j.dead || j.tossedTimer > 0) continue;
-            const d = dist(this, j);
-            if (d < minJDist) { minJDist = d; nearestJ = j; }
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > 220 || Math.abs(dy) > 220) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minJDistSq) { minJDistSq = dSq; nearestJ = j; }
         }
         this.nearestJelly = nearestJ;
 
         if (nearestJ) {
+            const minJDist = Math.sqrt(minJDistSq);
             let diff = Math.atan2(nearestJ.y - this.y, nearestJ.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -285,10 +308,17 @@ class PredatorFish {
         // 1. Jellyfish Hazard: Predator is ONLY harmed if mouth is open during contact with an UNTOSSED jellyfish!
         const mouthRadius = this.radius * (1.0 + this.mouthAperture * 0.25);
         if (this.invulnerableTimer <= 0 && this.mouthOpen) {
-            for (const j of jellies) {
-                if (!j.dead && j.tossedTimer <= 0 && dist(this, j) < mouthRadius + j.radius) {
-                    this.dead = true;
-                    return;
+            for (let i = 0; i < jellies.length; i++) {
+                const j = jellies[i];
+                if (!j.dead && j.tossedTimer <= 0) {
+                    const maxR = mouthRadius + j.radius;
+                    const dx = j.x - this.x;
+                    const dy = j.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
+                        this.dead = true;
+                        return;
+                    }
                 }
             }
         }
@@ -303,7 +333,6 @@ class PredatorFish {
 
             // Helper to apply food & check gluttony overload
             const onEat = (killCountGain, hungerRecover, bloatAmount, preyEntity) => {
-                // If above 70% fullness (hunger < 0.30), eating adds to gluttony bloat meter!
                 if (this.hunger < 0.30) {
                     this.gluttony += bloatAmount;
                 }
@@ -325,20 +354,16 @@ class PredatorFish {
                 }
             };
 
-            for (const f of turnFishes) {
-                if (!f.dead && f.invulnerableTimer <= 0 && dist(this, f) < mouthRadius + f.size * 0.4) {
-                    f.dead = true;
-                    onEat(1, 0.55, 0.38, f);
-                    ate = true;
-                    break;
-                }
-            }
-
-            if (!ate && !this.dead) {
-                for (const c of crabs) {
-                    if (!c.dead && c.invulnerableTimer <= 0 && dist(this, c) < mouthRadius + c.radius) {
-                        c.die();
-                        onEat(1, 0.55, 0.38, c);
+            for (let i = 0; i < turnFishes.length; i++) {
+                const f = turnFishes[i];
+                if (!f.dead && f.invulnerableTimer <= 0) {
+                    const maxR = mouthRadius + f.size * 0.4;
+                    const dx = f.x - this.x;
+                    const dy = f.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
+                        f.dead = true;
+                        onEat(1, 0.55, 0.38, f);
                         ate = true;
                         break;
                     }
@@ -346,9 +371,32 @@ class PredatorFish {
             }
 
             if (!ate && !this.dead) {
-                for (const p of predators) {
+                for (let i = 0; i < crabs.length; i++) {
+                    const c = crabs[i];
+                    if (!c.dead && c.invulnerableTimer <= 0) {
+                        const maxR = mouthRadius + c.radius;
+                        const dx = c.x - this.x;
+                        const dy = c.y - this.y;
+                        if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                        if (dx * dx + dy * dy < maxR * maxR) {
+                            c.die();
+                            onEat(1, 0.55, 0.38, c);
+                            ate = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!ate && !this.dead) {
+                for (let i = 0; i < predators.length; i++) {
+                    const p = predators[i];
                     if (p !== this && !p.dead && p.invulnerableTimer <= 0 && this.size > p.size * 1.3) {
-                        if (dist(this, p) < mouthRadius + p.size * 0.4) {
+                        const maxR = mouthRadius + p.size * 0.4;
+                        const dx = p.x - this.x;
+                        const dy = p.y - this.y;
+                        if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                        if (dx * dx + dy * dy < maxR * maxR) {
                             p.dead = true;
                             onEat(2, 0.75, 0.55, p);
                             ate = true;
@@ -360,12 +408,19 @@ class PredatorFish {
 
             // Predator can consume tossed/vulnerable jellyfish!
             if (!ate && !this.dead) {
-                for (const j of jellies) {
-                    if (!j.dead && j.tossedTimer > 0 && dist(this, j) < mouthRadius + j.radius) {
-                        j.dead = true;
-                        onEat(2, 0.70, 0.40, j);
-                        ate = true;
-                        break;
+                for (let i = 0; i < jellies.length; i++) {
+                    const j = jellies[i];
+                    if (!j.dead && j.tossedTimer > 0) {
+                        const maxR = mouthRadius + j.radius;
+                        const dx = j.x - this.x;
+                        const dy = j.y - this.y;
+                        if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                        if (dx * dx + dy * dy < maxR * maxR) {
+                            j.dead = true;
+                            onEat(2, 0.70, 0.40, j);
+                            ate = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -421,7 +476,7 @@ class PredatorFish {
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
             const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = `rgba(100, 240, 255, ${shieldAlpha})`;
+            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
             ctx.lineWidth = 2.4;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.35, 0, Math.PI * 2);
@@ -435,15 +490,15 @@ class PredatorFish {
         // Bloat warning pulse if near explosion threshold (> 65% bloat)
         if (bloat > 0.65) {
             const pulse = (Math.sin(this.age * 14) + 1) * 0.5;
-            ctx.strokeStyle = `rgba(239, 68, 68, ${0.4 + pulse * 0.45})`;
+            ctx.strokeStyle = getRgba(239, 68, 68, 0.4 + pulse * 0.45);
             ctx.lineWidth = 2.2;
             ctx.beginPath();
             ctx.arc(0, 0, r * (1.08 + pulse * 0.08), 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum}%)`;
-        ctx.strokeStyle = `hsl(${hue}, ${sat + 10}%, ${lum + 14}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum);
+        ctx.strokeStyle = getHsl(hue, sat + 10, lum + 14);
         ctx.lineWidth = Math.max(1.3, this.size * 0.045);
 
         // --- Big Circular Gulper Body with Extended Hinged Jaws ---
@@ -512,7 +567,7 @@ class PredatorFish {
         // Small Wagging Paddle Tail Fin
         const tailWave = Math.sin(this.age * 9);
         const finLen = r * 0.45;
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum - 8}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum - 8);
         ctx.beginPath();
         ctx.moveTo(-r, 0);
         ctx.lineTo(-r - finLen, -finLen * 0.7 + tailWave * 2);

@@ -150,16 +150,22 @@ class TurnFish {
      */
     think(foods = [], crabs = [], predators = [], jellies = []) {
         const maxDetectDist = Math.hypot(this.bounds.w, this.bounds.h) * 0.45;
+        const maxDetectDistSq = maxDetectDist * maxDetectDist;
 
-        // 1. Food Sensing (Angle, Dist, Nutrition Value)
-        let nearestF = null, minFDist = Infinity;
-        for (const f of foods) {
+        // 1. Food Sensing (Angle, Dist, Nutrition Value) via fast distSq
+        let nearestF = null, minFDistSq = maxDetectDistSq;
+        for (let i = 0; i < foods.length; i++) {
+            const f = foods[i];
             if (f.state !== "drifting") continue;
-            const d = dist(this, f);
-            if (d < minFDist) { minFDist = d; nearestF = f; }
+            const dx = f.x - this.x;
+            const dy = f.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minFDistSq) { minFDistSq = dSq; nearestF = f; }
         }
         this.nearestFood = nearestF;
         if (nearestF) {
+            const minFDist = Math.sqrt(minFDistSq);
             let diff = Math.atan2(nearestF.y - this.y, nearestF.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -171,14 +177,19 @@ class TurnFish {
         }
 
         // 2. Tumbling/Airborne Crab Sensing
-        let nearestC = null, minCDist = Infinity;
-        for (const c of crabs) {
+        let nearestC = null, minCDistSq = maxDetectDistSq;
+        for (let i = 0; i < crabs.length; i++) {
+            const c = crabs[i];
             if (c.dead || !c.isAirborne) continue;
-            const d = dist(this, c);
-            if (d < minCDist) { minCDist = d; nearestC = c; }
+            const dx = c.x - this.x;
+            const dy = c.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minCDistSq) { minCDistSq = dSq; nearestC = c; }
         }
         this.nearestTumblingCrab = nearestC;
         if (nearestC) {
+            const minCDist = Math.sqrt(minCDistSq);
             let diff = Math.atan2(nearestC.y - this.y, nearestC.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -203,10 +214,16 @@ class TurnFish {
         // 5. Predator Threat (Danger Sensor)
         let minPThreat = 0;
         const threatRadius = 180;
-        for (const p of predators) {
+        const threatRadiusSq = threatRadius * threatRadius;
+        for (let i = 0; i < predators.length; i++) {
+            const p = predators[i];
             if (p.dead) continue;
-            const d = dist(this, p);
-            if (d < threatRadius) {
+            const dx = p.x - this.x;
+            const dy = p.y - this.y;
+            if (Math.abs(dx) > threatRadius || Math.abs(dy) > threatRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < threatRadiusSq) {
+                const d = Math.sqrt(dSq);
                 const threat = (1 - (d / threatRadius)) * (p.size / 30);
                 if (threat > minPThreat) minPThreat = threat;
             }
@@ -215,11 +232,16 @@ class TurnFish {
 
         // 6. Jellyfish Sanctuary & Coverage Sensing
         let maxJellyNear = 0;
-        for (const j of jellies) {
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j.dead) continue;
-            const d = dist(this, j);
             const coverageRadius = 130 + (j.size || 22) * 2;
-            if (d < coverageRadius) {
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > coverageRadius || Math.abs(dy) > coverageRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < coverageRadius * coverageRadius) {
+                const d = Math.sqrt(dSq);
                 const coverageFactor = (j.size || 22) / 22;
                 const proximity = (1 - (d / coverageRadius)) * coverageFactor;
                 if (proximity > maxJellyNear) maxJellyNear = proximity;
@@ -300,9 +322,14 @@ class TurnFish {
         if (this.mouthOpen) {
             const mouthRadius = this.size * 0.48;
 
-            for (const f of foods) {
+            for (let i = 0; i < foods.length; i++) {
+                const f = foods[i];
                 if (f.state !== "drifting") continue;
-                if (dist(this, f) < mouthRadius + f.radius) {
+                const maxRange = mouthRadius + f.radius;
+                const dx = f.x - this.x;
+                const dy = f.y - this.y;
+                if (Math.abs(dx) > maxRange || Math.abs(dy) > maxRange) continue;
+                if (dx * dx + dy * dy < maxRange * maxRange) {
                     f.state = "dead";
                     this.foodEaten++;
                     const nutr = f.nutrition || 0.4;
@@ -319,16 +346,23 @@ class TurnFish {
             }
 
             // Check eating tumbling crabs
-            for (const c of crabs) {
-                if (!c.dead && c.isAirborne && dist(this, c) < mouthRadius + c.radius) {
-                    c.die();
-                    this.foodEaten += 2;
-                    this.hunger = Math.max(0, this.hunger - 0.6);
-                    if (this.hunger < 0.30) {
-                        this.gluttony = Math.min(1.0, this.gluttony + 0.45);
+            for (let i = 0; i < crabs.length; i++) {
+                const c = crabs[i];
+                if (!c.dead && c.isAirborne) {
+                    const maxRange = mouthRadius + c.radius;
+                    const dx = c.x - this.x;
+                    const dy = c.y - this.y;
+                    if (Math.abs(dx) > maxRange || Math.abs(dy) > maxRange) continue;
+                    if (dx * dx + dy * dy < maxRange * maxRange) {
+                        c.die();
+                        this.foodEaten += 2;
+                        this.hunger = Math.max(0, this.hunger - 0.6);
+                        if (this.hunger < 0.30) {
+                            this.gluttony = Math.min(1.0, this.gluttony + 0.45);
+                        }
+                        this._captureHighlight();
+                        break;
                     }
-                    this._captureHighlight();
-                    break;
                 }
             }
         }
@@ -378,15 +412,15 @@ class TurnFish {
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
             const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = `rgba(100, 240, 255, ${shieldAlpha})`;
+            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
             ctx.lineWidth = 2.5;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum}%)`;
-        ctx.strokeStyle = `hsl(${hue}, ${sat + 5}%, ${lum + 15}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum);
+        ctx.strokeStyle = getHsl(hue, sat + 5, lum + 15);
         ctx.lineWidth = 1.1;
 
         // Teardrop fish body (Swells slightly with gluttony bloat)
@@ -411,7 +445,7 @@ class TurnFish {
         ctx.lineTo(-this.size / 2 - finSize, -finSize * 0.8);
         ctx.lineTo(-this.size / 2 - finSize, finSize * 0.8);
         ctx.closePath();
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum - 10}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum - 10);
         ctx.fill();
 
         // Eye

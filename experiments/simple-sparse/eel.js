@@ -122,17 +122,23 @@ class RibbonEel {
      * @param {Array<PredatorFish>} predators 
      */
     think(carcasses = [], jellies = [], predators = []) {
-        const maxDetectDist = Math.hypot(this.bounds.w, this.bounds.h) * 0.5;
+        const maxDetectDist = Math.hypot(this.bounds.w, this.bounds.h) * 0.45;
+        const maxDetectDistSq = maxDetectDist * maxDetectDist;
 
-        // 1. Sinking Carcass Sensing
-        let nearestC = null, minCDist = Infinity;
-        for (const c of carcasses) {
+        // 1. Sinking Carcass Sensing via distSq
+        let nearestC = null, minCDistSq = maxDetectDistSq;
+        for (let i = 0; i < carcasses.length; i++) {
+            const c = carcasses[i];
             if (c.state !== "sinking") continue;
-            const d = dist(this, c);
-            if (d < minCDist) { minCDist = d; nearestC = c; }
+            const dx = c.x - this.x;
+            const dy = c.y - this.y;
+            if (Math.abs(dx) > maxDetectDist || Math.abs(dy) > maxDetectDist) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minCDistSq) { minCDistSq = dSq; nearestC = c; }
         }
 
         if (nearestC) {
+            const minCDist = Math.sqrt(minCDistSq);
             let diff = Math.atan2(nearestC.y - this.y, nearestC.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -142,15 +148,20 @@ class RibbonEel {
             this.inputs[0] = 0; this.inputs[1] = 0;
         }
 
-        // 2. Jellyfish Slipstream Proximity Sensing
-        let nearestJ = null, minJDist = Infinity;
-        for (const j of jellies) {
+        // 2. Jellyfish Slipstream Proximity Sensing via distSq
+        let nearestJ = null, minJDistSq = 200 * 200;
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j.dead) continue;
-            const d = dist(this, j);
-            if (d < minJDist) { minJDist = d; nearestJ = j; }
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > 200 || Math.abs(dy) > 200) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minJDistSq) { minJDistSq = dSq; nearestJ = j; }
         }
 
         if (nearestJ) {
+            const minJDist = Math.sqrt(minJDistSq);
             let diff = Math.atan2(nearestJ.y - this.y, nearestJ.x - this.x) - this.angle;
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
@@ -160,13 +171,19 @@ class RibbonEel {
             this.inputs[2] = 0; this.inputs[3] = 0;
         }
 
-        // 3. Predator Threat
+        // 3. Predator Threat via distSq
         let maxPThreat = 0;
-        for (const p of predators) {
+        const threatRadius = 160;
+        const threatRadiusSq = threatRadius * threatRadius;
+        for (let i = 0; i < predators.length; i++) {
+            const p = predators[i];
             if (p.dead) continue;
-            const d = dist(this, p);
-            if (d < 160) {
-                const t = (1 - (d / 160)) * (p.size / 30);
+            const dx = p.x - this.x;
+            const dy = p.y - this.y;
+            if (Math.abs(dx) > threatRadius || Math.abs(dy) > threatRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < threatRadiusSq) {
+                const t = (1 - (Math.sqrt(dSq) / threatRadius)) * (p.size / 30);
                 if (t > maxPThreat) maxPThreat = t;
             }
         }
@@ -249,13 +266,20 @@ class RibbonEel {
         // Catch sinking falling carcasses (consumes at most 1 item per frame)
         if (this.mouthOpen) {
             const mouthRadius = this.size * 0.42;
-            for (const c of carcasses) {
-                if (c.state === "sinking" && dist(this, c) < mouthRadius + c.radius) {
-                    c.state = "dead";
-                    this.foodEaten++;
-                    this.hunger = Math.max(0, this.hunger - 0.52);
-                    this._captureHighlight();
-                    break;
+            for (let i = 0; i < carcasses.length; i++) {
+                const c = carcasses[i];
+                if (c.state === "sinking") {
+                    const maxR = mouthRadius + c.radius;
+                    const dx = c.x - this.x;
+                    const dy = c.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
+                        c.state = "dead";
+                        this.foodEaten++;
+                        this.hunger = Math.max(0, this.hunger - 0.52);
+                        this._captureHighlight();
+                        break;
+                    }
                 }
             }
         }
@@ -311,11 +335,17 @@ class RibbonEel {
 
         // Apply Hydrodynamic Fluid Slipstream onto Nearby Jellyfish (Size-Scaled Current)
         const draftRadius = 75 + this.size * 1.6;
+        const draftRadiusSq = draftRadius * draftRadius;
         const draftStrength = 0.40 * Math.pow(sizeFactor, 1.4);
-        for (const j of jellies) {
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j.dead) continue;
-            const d = dist(this, j);
-            if (d < draftRadius) {
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > draftRadius || Math.abs(dy) > draftRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < draftRadiusSq) {
+                const d = Math.sqrt(dSq);
                 const draftFactor = (1 - (d / draftRadius)) * draftStrength;
                 j.applyCurrent(this.vx * draftFactor, (this.vy - 16 * sizeFactor) * draftFactor, dt);
             }
@@ -338,7 +368,7 @@ class RibbonEel {
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
             const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = `rgba(100, 240, 255, ${shieldAlpha})`;
+            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
             ctx.lineWidth = 2.0;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.size * 0.45, 0, Math.PI * 2);
@@ -354,7 +384,7 @@ class RibbonEel {
             const p0 = this.spine[i - 1];
             const segmentRadius = (this.size * 0.28) * (1.0 - (i / this.numSegments) * 0.65);
 
-            ctx.strokeStyle = `hsl(${hue}, ${sat}%, ${lum}%)`;
+            ctx.strokeStyle = getHsl(hue, sat, lum);
             ctx.lineWidth = segmentRadius * 2;
             ctx.beginPath();
             ctx.moveTo(p0.x, p0.y);
@@ -362,7 +392,7 @@ class RibbonEel {
             ctx.stroke();
 
             // Lighter dorsal crest stripe
-            ctx.strokeStyle = `hsl(${hue + 15}, ${sat}%, ${lum + 16}%)`;
+            ctx.strokeStyle = getHsl(hue + 15, sat, lum + 16);
             ctx.lineWidth = Math.max(1, segmentRadius * 0.7);
             ctx.beginPath();
             ctx.moveTo(p0.x, p0.y);
@@ -375,8 +405,8 @@ class RibbonEel {
         ctx.rotate(this.angle);
 
         const headR = this.size * 0.28;
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum}%)`;
-        ctx.strokeStyle = `hsl(${hue + 10}, ${sat}%, ${lum + 14}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum);
+        ctx.strokeStyle = getHsl(hue + 10, sat, lum + 14);
         ctx.lineWidth = 1.2;
 
         ctx.beginPath();

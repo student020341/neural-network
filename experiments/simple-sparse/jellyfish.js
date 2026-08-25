@@ -157,15 +157,20 @@ class Jellyfish {
         this.inputs[2] = clamp(1 - (this.x / 140), 0, 1);
         this.inputs[3] = clamp(1 - ((this.bounds.w - this.x) / 140), 0, 1);
 
-        // 4. Falling Food Proximity & Nutrition
+        // 4. Falling Food Proximity & Nutrition via distSq
         let maxFoodSignal = 0;
         let foodNutrition = 0;
         const filterRadius = 90 + this.radius;
-        for (const f of foods) {
+        const filterRadiusSq = filterRadius * filterRadius;
+        for (let i = 0; i < foods.length; i++) {
+            const f = foods[i];
             if (f.state !== "drifting") continue;
-            const d = dist(this, f);
-            if (d < filterRadius) {
-                const signal = 1 - (d / filterRadius);
+            const dx = f.x - this.x;
+            const dy = f.y - this.y;
+            if (Math.abs(dx) > filterRadius || Math.abs(dy) > filterRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < filterRadiusSq) {
+                const signal = 1 - (Math.sqrt(dSq) / filterRadius);
                 if (signal > maxFoodSignal) {
                     maxFoodSignal = signal;
                     foodNutrition = f.nutrition || 0.4;
@@ -175,15 +180,20 @@ class Jellyfish {
         this.inputs[4] = maxFoodSignal;
         this.inputs[5] = clamp(foodNutrition, 0, 1);
 
-        // 5. Rival Jellyfish Proximity & Angle (Crowding / Duel Sensor)
-        let nearestRival = null, minRDist = Infinity;
-        for (const j of jellies) {
+        // 5. Rival Jellyfish Proximity & Angle via distSq
+        let nearestRival = null, minRDistSq = 140 * 140;
+        for (let i = 0; i < jellies.length; i++) {
+            const j = jellies[i];
             if (j === this || j.dead) continue;
-            const d = dist(this, j);
-            if (d < minRDist) { minRDist = d; nearestRival = j; }
+            const dx = j.x - this.x;
+            const dy = j.y - this.y;
+            if (Math.abs(dx) > 140 || Math.abs(dy) > 140) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minRDistSq) { minRDistSq = dSq; nearestRival = j; }
         }
 
-        if (nearestRival && minRDist < 140) {
+        if (nearestRival) {
+            const minRDist = Math.sqrt(minRDistSq);
             let diff = Math.atan2(nearestRival.y - this.y, nearestRival.x - this.x);
             this.inputs[6] = clamp(1 - (minRDist / 140), 0, 1);
             this.inputs[7] = diff / Math.PI;
@@ -332,12 +342,18 @@ class Jellyfish {
             this.jetTimer = 0.22;
             const blastRadius = this.radius * 2.4;
 
-            for (const rival of jellies) {
+            for (let i = 0; i < jellies.length; i++) {
+                const rival = jellies[i];
                 if (rival === this || rival.dead) continue;
-                const d = dist(this, rival);
-                if (d < blastRadius + rival.radius) {
-                    const ang = Math.atan2(rival.y - this.y, rival.x - this.x);
-                    const pushPower = (1 - (d / (blastRadius + rival.radius))) * (95 + this.size * 1.8);
+                const maxR = blastRadius + rival.radius;
+                const dx = rival.x - this.x;
+                const dy = rival.y - this.y;
+                if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                const dSq = dx * dx + dy * dy;
+                if (dSq < maxR * maxR) {
+                    const d = Math.sqrt(dSq);
+                    const ang = Math.atan2(dy, dx);
+                    const pushPower = (1 - (d / maxR)) * (95 + this.size * 1.8);
                     
                     // Repel rival outward
                     rival.vx += Math.cos(ang) * pushPower * dt;
@@ -368,7 +384,6 @@ class Jellyfish {
         }
 
         // --- Water Density Stratification & Buoyancy Cushion ---
-        // Sinking rate is reduced by up to 65% inside the peak nutrition zone (y ~ 0.52)!
         const depthRatio = clamp(this.y / Math.max(1, this.bounds.h), 0, 1);
         const peakDist = Math.abs(depthRatio - 0.52) / 0.52;
         this.buoyancy = clamp(1.0 - Math.pow(peakDist, 1.5) * 0.75, 0.25, 1.0);
@@ -395,7 +410,7 @@ class Jellyfish {
 
         ctx.save();
         ctx.translate(this.x, this.y);
-        ctx.rotate(this.tiltAngle * 0.6); // Visual tilt during directional pulses
+        ctx.rotate(this.tiltAngle * 0.6);
 
         // Visual Hunger Tweening (Electric Neon Pink/Violet -> Ghostly Gray)
         const hue = lerp(290, 0, this.hunger);
@@ -403,10 +418,10 @@ class Jellyfish {
         const lum = lerp(65, 75, this.hunger);
         const alpha = lerp(0.72, 0.32, this.hunger);
 
-        // Tossed Vulnerable Halo (Amber/Gold shimmering ring when tossed by crab)
+        // Tossed Vulnerable Halo
         if (this.tossedTimer > 0) {
             const pulse = (Math.sin(this.age * 16) + 1) * 0.5;
-            ctx.strokeStyle = `rgba(251, 191, 36, ${0.6 + pulse * 0.35})`;
+            ctx.strokeStyle = getRgba(251, 191, 36, 0.6 + pulse * 0.35);
             ctx.lineWidth = 2.4;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * (1.35 + pulse * 0.15), 0, Math.PI * 2);
@@ -416,7 +431,7 @@ class Jellyfish {
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
             const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = `rgba(100, 240, 255, ${shieldAlpha})`;
+            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
             ctx.lineWidth = 2.2;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.25, 0, Math.PI * 2);
@@ -426,7 +441,7 @@ class Jellyfish {
         // Water Jet Shockwave Ripple Rings
         if (this.jetTimer > 0) {
             const jetAlpha = (this.jetTimer / 0.22);
-            ctx.strokeStyle = `rgba(120, 240, 255, ${jetAlpha * 0.6})`;
+            ctx.strokeStyle = getRgba(120, 240, 255, jetAlpha * 0.6);
             ctx.lineWidth = 1.8;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * (1.3 + (1 - jetAlpha) * 0.8), 0, Math.PI * 2);
@@ -436,8 +451,8 @@ class Jellyfish {
         const squeeze = 1.0 - this.pulsePower * 0.3;
         const stretch = 1.0 + this.pulsePower * 0.4;
 
-        ctx.fillStyle = `hsla(${hue}, ${sat}%, ${lum}%, ${alpha})`;
-        ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${lum + 15}%, ${alpha + 0.2})`;
+        ctx.fillStyle = getHsla(hue, sat, lum, alpha);
+        ctx.strokeStyle = getHsla(hue, sat, lum + 15, alpha + 0.2);
         ctx.lineWidth = 1.2;
 
         // Umbrella Bell
@@ -448,15 +463,15 @@ class Jellyfish {
         ctx.fill();
         ctx.stroke();
 
-        // Inner glowing core (glows slightly brighter inside buoyant bloom strata)
+        // Inner glowing core
         const coreGlow = (this.buoyancy - 0.25) / 0.75;
-        ctx.fillStyle = `hsla(${hue + 20}, ${sat}%, ${lum + 20}%, ${alpha * (0.85 + coreGlow * 0.15)})`;
+        ctx.fillStyle = getHsla(hue + 20, sat, lum + 20, alpha * (0.85 + coreGlow * 0.15));
         ctx.beginPath();
         ctx.arc(0, -2, this.radius * 0.45 * squeeze, 0, Math.PI * 2);
         ctx.fill();
 
-        // Trailing tentacles (sway with horizontal velocity)
-        ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${lum}%, ${alpha * 0.75})`;
+        // Trailing tentacles
+        ctx.strokeStyle = getHsla(hue, sat, lum, alpha * 0.75);
         ctx.lineWidth = Math.max(0.8, this.size * 0.05);
         const tentacleLen = this.size * 0.8 * stretch;
         const wave = Math.sin(this.age * 7);

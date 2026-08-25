@@ -207,14 +207,18 @@ class Crab {
             this.inputs[2] = 0; this.inputs[3] = 0;
         }
 
-        // 3. Rival Crab Proximity
-        let minRivalDist = Infinity;
-        for (const c of crabs) {
+        // 3. Rival Crab Proximity via distSq
+        let minRivalDistSq = 50 * 50;
+        for (let i = 0; i < crabs.length; i++) {
+            const c = crabs[i];
             if (c === this || c.dead || c.isAirborne) continue;
-            const d = dist(this, c);
-            if (d < minRivalDist) minRivalDist = d;
+            const dx = c.x - this.x;
+            const dy = c.y - this.y;
+            if (Math.abs(dx) > 50 || Math.abs(dy) > 50) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < minRivalDistSq) minRivalDistSq = dSq;
         }
-        this.inputs[4] = minRivalDist < 50 ? clamp(1 - (minRivalDist / 50), 0, 1) : 0;
+        this.inputs[4] = minRivalDistSq < 2500 ? clamp(1 - (Math.sqrt(minRivalDistSq) / 50), 0, 1) : 0;
 
         // 4. Wall Climb Limit Proximity
         const wallH = this.bounds.h * 0.25;
@@ -222,13 +226,19 @@ class Crab {
         const nearEdge = Math.min(this.s, totalLen - this.s);
         this.inputs[5] = nearEdge < 35 ? clamp(1 - (nearEdge / 35), 0, 1) : 0;
 
-        // 5. Predator Threat
+        // 5. Predator Threat via distSq
         let maxPThreat = 0;
-        for (const p of predators) {
+        const threatRadius = 140;
+        const threatRadiusSq = threatRadius * threatRadius;
+        for (let i = 0; i < predators.length; i++) {
+            const p = predators[i];
             if (p.dead) continue;
-            const d = dist(this, p);
-            if (d < 140) {
-                const t = (1 - (d / 140)) * (p.size / 30);
+            const dx = p.x - this.x;
+            const dy = p.y - this.y;
+            if (Math.abs(dx) > threatRadius || Math.abs(dy) > threatRadius) continue;
+            const dSq = dx * dx + dy * dy;
+            if (dSq < threatRadiusSq) {
+                const t = (1 - (Math.sqrt(dSq) / threatRadius)) * (p.size / 30);
                 if (t > maxPThreat) maxPThreat = t;
             }
         }
@@ -366,29 +376,19 @@ class Crab {
             let ate = false;
 
             // Eat settled food detritus
-            for (const f of foods) {
-                if (f.state === "settled" && dist(this, f) < this.size * 1.2) {
-                    f.state = "dead";
-                    this.foodEaten++;
-                    this.hunger = Math.max(0, this.hunger - 0.45);
-                    if (this.hunger < 0.30) {
-                        this.gluttony = Math.min(1.0, this.gluttony + 0.32);
-                    }
-                    this._captureHighlight();
-                    ate = true;
-                    break;
-                }
-            }
-
-            // Eat fallen carcasses
-            if (!ate) {
-                for (const c of carcasses) {
-                    if (c.state !== "dead" && dist(this, c) < this.size * 1.3) {
-                        c.state = "dead";
-                        this.foodEaten += 2;
-                        this.hunger = Math.max(0, this.hunger - 0.65);
+            for (let i = 0; i < foods.length; i++) {
+                const f = foods[i];
+                if (f.state === "settled") {
+                    const maxR = this.size * 1.2;
+                    const dx = f.x - this.x;
+                    const dy = f.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
+                        f.state = "dead";
+                        this.foodEaten++;
+                        this.hunger = Math.max(0, this.hunger - 0.45);
                         if (this.hunger < 0.30) {
-                            this.gluttony = Math.min(1.0, this.gluttony + 0.45);
+                            this.gluttony = Math.min(1.0, this.gluttony + 0.32);
                         }
                         this._captureHighlight();
                         ate = true;
@@ -397,14 +397,45 @@ class Crab {
                 }
             }
 
+            // Eat fallen carcasses
+            if (!ate) {
+                for (let i = 0; i < carcasses.length; i++) {
+                    const c = carcasses[i];
+                    if (c.state !== "dead") {
+                        const maxR = this.size * 1.3;
+                        const dx = c.x - this.x;
+                        const dy = c.y - this.y;
+                        if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                        if (dx * dx + dy * dy < maxR * maxR) {
+                            c.state = "dead";
+                            this.foodEaten += 2;
+                            this.hunger = Math.max(0, this.hunger - 0.65);
+                            if (this.hunger < 0.30) {
+                                this.gluttony = Math.min(1.0, this.gluttony + 0.45);
+                            }
+                            this._captureHighlight();
+                            ate = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Nibble beached jellyfish tentacles
             if (!ate) {
-                for (const j of jellies) {
-                    if (!j.dead && dist(this, j) < this.size + (j.size || 22) * 0.5) {
-                        j.takeDamage(0.25 * dt);
-                        this.hunger = Math.max(0, this.hunger - 0.15 * dt);
-                        this._captureHighlight();
-                        break;
+                for (let i = 0; i < jellies.length; i++) {
+                    const j = jellies[i];
+                    if (!j.dead) {
+                        const maxR = this.size + (j.size || 22) * 0.5;
+                        const dx = j.x - this.x;
+                        const dy = j.y - this.y;
+                        if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                        if (dx * dx + dy * dy < maxR * maxR) {
+                            j.takeDamage(0.25 * dt);
+                            this.hunger = Math.max(0, this.hunger - 0.15 * dt);
+                            this._captureHighlight();
+                            break;
+                        }
                     }
                 }
             }
@@ -415,32 +446,44 @@ class Crab {
             let tossedJelly = false;
 
             // 1. Toss floor-dwelling jellyfish into vulnerable tumbling state & spawn food!
-            for (const j of jellies) {
+            for (let i = 0; i < jellies.length; i++) {
+                const j = jellies[i];
                 if (j.dead) continue;
                 const isNearFloor = j.y >= this.bounds.h - (j.size || 22) * 2.4;
-                if (isNearFloor && dist(this, j) < this.size * 1.35 + j.radius) {
-                    j.tossedTimer = 3.5;
-                    j.vy = -randRange(175, 240);
-                    j.vx = randRange(-70, 70);
-                    this.pincerCooldown = ageCooldownDuration;
-                    this.score += 60;
-                    this.foodEaten++;
-                    this.hunger = Math.max(0, this.hunger - 0.25);
-                    this._captureHighlight();
+                if (isNearFloor) {
+                    const maxR = this.size * 1.35 + j.radius;
+                    const dx = j.x - this.x;
+                    const dy = j.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
+                        j.tossedTimer = 3.5;
+                        j.vy = -randRange(175, 240);
+                        j.vx = randRange(-70, 70);
+                        this.pincerCooldown = ageCooldownDuration;
+                        this.score += 60;
+                        this.foodEaten++;
+                        this.hunger = Math.max(0, this.hunger - 0.25);
+                        this._captureHighlight();
 
-                    if (typeof onTossJellyCallback === "function") {
-                        onTossJellyCallback(this, j);
+                        if (typeof onTossJellyCallback === "function") {
+                            onTossJellyCallback(this, j);
+                        }
+                        tossedJelly = true;
+                        break;
                     }
-                    tossedJelly = true;
-                    break;
                 }
             }
 
             // 2. Pincer Duel Collision with rival Crabs (Impairs power by gluttony, boosted by Elder age!)
             if (!tossedJelly) {
-                for (const c of crabs) {
+                for (let i = 0; i < crabs.length; i++) {
+                    const c = crabs[i];
                     if (c === this || c.dead || c.isAirborne) continue;
-                    if (dist(this, c) < this.size * 1.15) {
+                    const maxR = this.size * 1.15;
+                    const dx = c.x - this.x;
+                    const dy = c.y - this.y;
+                    if (Math.abs(dx) > maxR || Math.abs(dy) > maxR) continue;
+                    if (dx * dx + dy * dy < maxR * maxR) {
                         const rivalAgeFactor = clamp(c.age / 120, 0, 1);
                         const rivalDuelPowerMultiplier = 1.0 + (rivalAgeFactor * 0.45);
 
@@ -506,15 +549,15 @@ class Crab {
         // Invulnerability Shield Shimmer
         if (this.invulnerableTimer > 0) {
             const shieldAlpha = (Math.sin(this.age * 12) + 1) * 0.35;
-            ctx.strokeStyle = `rgba(100, 240, 255, ${shieldAlpha})`;
+            ctx.strokeStyle = getRgba(100, 240, 255, shieldAlpha);
             ctx.lineWidth = 2.2;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lum}%)`;
-        ctx.strokeStyle = `hsl(${hue}, ${sat}%, ${lum - 15}%)`;
+        ctx.fillStyle = getHsl(hue, sat, lum);
+        ctx.strokeStyle = getHsl(hue, sat, lum - 15);
         ctx.lineWidth = 1.1;
 
         // Rounded crab carapace (swells slightly with gluttony)
@@ -573,8 +616,8 @@ class Crab {
         const clawSat = lerp(sat, 0, strainRatio);
         const clawLum = lerp(lum - 8, 48, strainRatio);
 
-        ctx.fillStyle = `hsl(${hue}, ${clawSat}%, ${clawLum}%)`;
-        ctx.strokeStyle = `hsl(${hue}, ${clawSat}%, ${clawLum - 14}%)`;
+        ctx.fillStyle = getHsl(hue, clawSat, clawLum);
+        ctx.strokeStyle = getHsl(hue, clawSat, clawLum - 14);
         drawSplitClaw(-clawDist, -this.size * 0.3);
         drawSplitClaw(clawDist, -this.size * 0.3);
 

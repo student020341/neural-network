@@ -82,26 +82,26 @@ class Food {
 
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius + glow, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(130, 255, 100, ${0.15 + normNutr * 0.28})`;
+            ctx.fillStyle = getRgba(130, 255, 100, 0.15 + normNutr * 0.28);
             ctx.fill();
 
             // Core pellet (shifts from soft mint to brilliant golden chartreuse)
             const hue = lerp(155, 85, normNutr);
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = `hsl(${hue}, 100%, ${lerp(55, 68, normNutr)}%)`;
+            ctx.fillStyle = getHsl(hue, 100, lerp(55, 68, normNutr));
             ctx.fill();
             ctx.lineWidth = 1;
-            ctx.strokeStyle = `hsl(${hue}, 100%, 88%)`;
+            ctx.strokeStyle = getHsl(hue, 100, 88);
             ctx.stroke();
         } else {
             // Settled decayed detritus: earthy amber tone fading over 10s
             const fade = Math.max(0.1, 1 - (this.groundTimer / this.groundLifetime));
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius * (0.8 + 0.2 * fade), 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(180, 140, 60, ${fade * 0.9})`;
+            ctx.fillStyle = getRgba(180, 140, 60, fade * 0.9);
             ctx.fill();
-            ctx.strokeStyle = `rgba(220, 180, 90, ${fade * 0.6})`;
+            ctx.strokeStyle = getRgba(220, 180, 90, fade * 0.6);
             ctx.lineWidth = 0.8;
             ctx.stroke();
         }
@@ -171,8 +171,8 @@ class Carcass {
             ? Math.max(0.1, 1 - (this.groundTimer / this.groundLifetime))
             : 1.0;
 
-        ctx.strokeStyle = `rgba(160, 175, 190, ${fade * 0.6})`;
-        ctx.fillStyle = `rgba(100, 115, 130, ${fade * 0.35})`;
+        ctx.strokeStyle = getRgba(160, 175, 190, fade * 0.6);
+        ctx.fillStyle = getRgba(100, 115, 130, fade * 0.35);
         ctx.lineWidth = 1.1;
 
         // Upside-down skeletal silhouette
@@ -184,7 +184,7 @@ class Carcass {
         // X for eyes (deceased indicator)
         const eyeX = this.size * 0.22;
         const eyeSize = Math.max(1.8, this.size * 0.08);
-        ctx.strokeStyle = `rgba(220, 230, 240, ${fade * 0.8})`;
+        ctx.strokeStyle = getRgba(220, 230, 240, fade * 0.8);
         ctx.beginPath();
         ctx.moveTo(eyeX - eyeSize, -eyeSize); ctx.lineTo(eyeX + eyeSize, eyeSize);
         ctx.moveTo(eyeX + eyeSize, -eyeSize); ctx.lineTo(eyeX - eyeSize, eyeSize);
