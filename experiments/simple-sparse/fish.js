@@ -19,12 +19,12 @@ const TURNFISH_HUNGER_TIERS = [
     { fill: "#d9383a", stroke: "#f87171", fin: "#ad2c2e" }  // 7: Starving Crimson
 ];
 
-// Pre-computed 4 Discrete Invulnerability Shimmer Alphas
-const SHIELD_ALPHAS = [
-    "rgba(100, 240, 255, 0.20)",
-    "rgba(100, 240, 255, 0.40)",
-    "rgba(100, 240, 255, 0.60)",
-    "rgba(100, 240, 255, 0.75)"
+// Pre-computed 4 Discrete Invulnerability Shimmer Colors (100% Solid Opaque)
+const SHIELD_COLORS = [
+    "#0284c7",
+    "#0ea5e9",
+    "#38bdf8",
+    "#7dd3fc"
 ];
 
 class TurnFish {
@@ -467,8 +467,8 @@ class TurnFish {
         // 4 Discrete Invulnerability Shield Shimmer Phases
         if (this.invulnerableTimer > 0) {
             const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
-            ctx.strokeStyle = SHIELD_ALPHAS[phaseIdx];
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = SHIELD_COLORS[phaseIdx];
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();

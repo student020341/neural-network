@@ -515,11 +515,10 @@ class PredatorFish {
         const hungerTier = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
         const style = PREDATOR_COLOR_TIERS[hungerTier];
 
-        // Invulnerability Shield Shimmer (Discretized)
+        // Invulnerability Shield Shimmer (Solid Cyan)
         if (this.invulnerableTimer > 0) {
-            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
-            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
-            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.35, 0, Math.PI * 2);
             ctx.stroke();
@@ -533,10 +532,10 @@ class PredatorFish {
         const gapeIdx = this.mouthAperture < 0.15 ? 0 : (this.mouthAperture < 0.45 ? 1 : (this.mouthAperture < 0.75 ? 2 : 3));
         const gapeAngle = [0.0, 0.18, 0.38, 0.55][gapeIdx];
 
-        // Bloat warning pulse if near explosion threshold (> 65% bloat)
+        // Bloat warning ring if near explosion threshold (> 65% bloat)
         if (bloat > 0.65) {
-            ctx.strokeStyle = "rgba(239, 68, 68, 0.65)";
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(0, 0, r * 1.1, 0, Math.PI * 2);
             ctx.stroke();

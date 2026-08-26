@@ -414,11 +414,10 @@ class RibbonEel {
         const hungerTier = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
         const style = EEL_COLOR_TIERS[hungerTier];
 
-        // Invulnerability Shield Shimmer (Discretized)
+        // Invulnerability Shield Shimmer (Solid Cyan)
         if (this.invulnerableTimer > 0) {
-            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
-            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.size * 0.45, 0, Math.PI * 2);
             ctx.stroke();

@@ -7,14 +7,14 @@ const JELLY_SIZES = [
     46.0, 50.0, 55.0  // Large (L1, L2, L3)
 ];
 
-// Pre-computed 6 Discrete Neon Bell Color Tiers
+// Pre-computed 6 Discrete Neon Bell Color Tiers (100% Solid Opaque Colors - Zero Alpha Blending)
 const JELLY_COLOR_TIERS = [
-    { fill: "rgba(225, 29, 205, 0.72)", stroke: "rgba(255, 100, 240, 0.90)", core: "rgba(255, 120, 250, 0.85)", tentacle: "rgba(225, 29, 205, 0.55)" }, // 0: Vivid Neon Magenta
-    { fill: "rgba(180, 40, 235, 0.68)", stroke: "rgba(215, 110, 255, 0.85)", core: "rgba(230, 130, 255, 0.80)", tentacle: "rgba(180, 40, 235, 0.50)" }, // 1: Electric Violet
-    { fill: "rgba(145, 60, 230, 0.62)", stroke: "rgba(185, 120, 255, 0.80)", core: "rgba(205, 140, 255, 0.75)", tentacle: "rgba(145, 60, 230, 0.45)" }, // 2: Amethyst
-    { fill: "rgba(110, 75, 215, 0.55)", stroke: "rgba(155, 130, 245, 0.72)", core: "rgba(175, 150, 255, 0.65)", tentacle: "rgba(110, 75, 215, 0.40)" }, // 3: Slate Iris
-    { fill: "rgba(90, 85, 190, 0.45)",  stroke: "rgba(135, 130, 220, 0.60)", core: "rgba(155, 150, 235, 0.50)", tentacle: "rgba(90, 85, 190, 0.32)" }, // 4: Faded Mauve
-    { fill: "rgba(80, 85, 120, 0.32)",  stroke: "rgba(120, 130, 170, 0.45)", core: "rgba(140, 150, 190, 0.35)", tentacle: "rgba(80, 85, 120, 0.22)" }  // 5: Starving Ghost
+    { fill: "#d946ef", stroke: "#f472b6", core: "#fdf4ff", tentacle: "#c026d3" }, // 0: Vivid Neon Magenta
+    { fill: "#a855f7", stroke: "#c084fc", core: "#faf5ff", tentacle: "#9333ea" }, // 1: Electric Violet
+    { fill: "#8b5cf6", stroke: "#a78bfa", core: "#f5f3ff", tentacle: "#7c3aed" }, // 2: Amethyst
+    { fill: "#6366f1", stroke: "#818cf8", core: "#eef2ff", tentacle: "#4f46e5" }, // 3: Slate Iris
+    { fill: "#475569", stroke: "#94a3b8", core: "#cbd5e1", tentacle: "#334155" }, // 4: Faded Mauve
+    { fill: "#334155", stroke: "#64748b", core: "#94a3b8", tentacle: "#1e293b" }  // 5: Starving Ghost
 ];
 
 class Jellyfish {
@@ -462,29 +462,28 @@ class Jellyfish {
         const colorTier = Math.min(5, Math.max(0, Math.floor(this.hunger * 6)));
         const style = JELLY_COLOR_TIERS[colorTier];
 
-        // Tossed Vulnerable Halo (Discretized)
+        // Tossed Vulnerable Halo (Solid Amber)
         if (this.tossedTimer > 0) {
-            ctx.strokeStyle = "rgba(251, 191, 36, 0.75)";
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = "#f59e0b";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.4, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // Invulnerability Shield Shimmer (Discretized)
+        // Invulnerability Shield Shimmer (Solid Cyan)
         if (this.invulnerableTimer > 0) {
-            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
-            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.25, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // Water Jet Shockwave Ripple Rings (Discretized)
+        // Water Jet Shockwave Ripple Rings (Solid Sky Blue)
         if (this.jetTimer > 0) {
-            ctx.strokeStyle = "rgba(120, 240, 255, 0.45)";
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "#0ea5e9";
+            ctx.lineWidth = 1.2;
             ctx.beginPath();
             ctx.arc(0, 0, this.radius * 1.6, 0, Math.PI * 2);
             ctx.stroke();

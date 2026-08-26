@@ -589,11 +589,10 @@ class Crab {
         const colorTier = Math.min(5, hungerIdx + Math.floor(ageFactor * 2));
         const style = CRAB_COLOR_TIERS[colorTier];
 
-        // Invulnerability Shield Shimmer (Discretized)
+        // Invulnerability Shield Shimmer (Solid Cyan)
         if (this.invulnerableTimer > 0) {
-            const phaseIdx = Math.min(3, Math.max(0, Math.floor(((Math.sin(this.age * 12) + 1) * 0.5) * 4)));
-            ctx.strokeStyle = SHIELD_ALPHAS ? SHIELD_ALPHAS[phaseIdx] : "rgba(100, 240, 255, 0.50)";
-            ctx.lineWidth = 2.0;
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.ellipse(0, 0, this.size * 0.65, this.size * 0.45, 0, 0, Math.PI * 2);
             ctx.stroke();

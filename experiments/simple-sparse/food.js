@@ -1,42 +1,42 @@
 // Food & Carcass Entities for the Aquarium Ecosystem with Discrete Classification & Batched Rendering
 
-// Pre-computed discrete nutrition visual tiers
+// Pre-computed discrete nutrition visual tiers (100% Solid Opaque - Zero Alpha Blending)
 const FOOD_TIERS = [
-    // Tier 0: Settled Detritus
+    // Tier 0: Settled Detritus (Earthy amber sediment)
     {
         radius: 2.2,
-        fill: "rgba(180, 140, 60, 0.75)",
-        stroke: "rgba(220, 180, 90, 0.50)",
+        fill: "#b45309",
+        stroke: "#f59e0b",
         lineWidth: 0.8,
         hasGlow: false
     },
-    // Tier 1: Standard Drifting (Low-Med Nutrition)
+    // Tier 1: Standard Drifting (Fresh Mint Green)
     {
         radius: 2.4,
-        fill: "#48d597",
-        stroke: "#9bf2ca",
+        fill: "#10b981",
+        stroke: "#6ee7b7",
         lineWidth: 1.0,
         hasGlow: false
     },
-    // Tier 2: Nutritious Drifting (Med-High Nutrition)
+    // Tier 2: Nutritious Drifting (Bright Chartreuse)
     {
         radius: 2.8,
-        fill: "#84e038",
-        stroke: "#c4ff75",
+        fill: "#84cc16",
+        stroke: "#bef264",
         lineWidth: 1.0,
-        glowFill: "rgba(130, 255, 100, 0.20)",
+        ringColor: "#4d7c0f",
         hasGlow: true,
-        glowRadius: 4.8
+        glowRadius: 4.6
     },
-    // Tier 3: Peak Bloom Drifting (Peak Depth Nutrition)
+    // Tier 3: Peak Bloom Drifting (Brilliant Lime)
     {
         radius: 3.3,
-        fill: "#baf72c",
-        stroke: "#e7ffa8",
+        fill: "#a3e635",
+        stroke: "#ecfccb",
         lineWidth: 1.2,
-        glowFill: "rgba(160, 255, 120, 0.35)",
+        ringColor: "#65a30d",
         hasGlow: true,
-        glowRadius: 6.2
+        glowRadius: 5.8
     }
 ];
 
@@ -132,20 +132,21 @@ class Food {
             }
         }
 
-        // Pass 1: Glow halos for High and Peak tiers
+        // Pass 1: Solid outline rings for High and Peak nutrition tiers
         for (let t = 2; t <= 3; t++) {
             const group = tierPellets[t];
             if (group.length === 0) continue;
             const style = FOOD_TIERS[t];
 
-            ctx.fillStyle = style.glowFill;
+            ctx.lineWidth = 1.0;
+            ctx.strokeStyle = style.ringColor;
             ctx.beginPath();
             for (let i = 0; i < group.length; i++) {
                 const f = group[i];
                 ctx.moveTo(f.x + style.glowRadius, f.y);
                 ctx.arc(f.x, f.y, style.glowRadius, 0, Math.PI * 2);
             }
-            ctx.fill();
+            ctx.stroke();
         }
 
         // Pass 2: Core pellets per tier
@@ -178,10 +179,11 @@ class Food {
         const style = FOOD_TIERS[this.tier];
 
         if (style.hasGlow) {
-            ctx.fillStyle = style.glowFill;
+            ctx.lineWidth = 1.0;
+            ctx.strokeStyle = style.ringColor;
             ctx.beginPath();
             ctx.arc(this.x, this.y, style.glowRadius, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.stroke();
         }
 
         ctx.beginPath();
@@ -194,25 +196,25 @@ class Food {
     }
 }
 
-// Pre-computed discrete carcass decay tiers
+// Pre-computed discrete carcass decay tiers (100% Solid Opaque Colors - Zero Alpha Blending)
 const CARCASS_TIERS = [
-    // Tier 0: Fresh Sinking
+    // Tier 0: Fresh Sinking (Solid Slate Blue/Gray)
     {
-        fill: "rgba(130, 145, 160, 0.45)",
-        stroke: "rgba(190, 205, 220, 0.75)",
-        eyeStroke: "rgba(240, 245, 250, 0.90)"
+        fill: "#475569",
+        stroke: "#94a3b8",
+        eyeStroke: "#f8fafc"
     },
-    // Tier 1: Skeletal Sinking
+    // Tier 1: Skeletal Sinking (Dark Bone Slate)
     {
-        fill: "rgba(100, 115, 130, 0.35)",
-        stroke: "rgba(160, 175, 190, 0.60)",
-        eyeStroke: "rgba(220, 230, 240, 0.75)"
+        fill: "#334155",
+        stroke: "#64748b",
+        eyeStroke: "#cbd5e1"
     },
-    // Tier 2: Settled Bone / Fading Sediment
+    // Tier 2: Settled Bone (Deep Fossil Floor Sediment)
     {
-        fill: "rgba(80, 95, 110, 0.20)",
-        stroke: "rgba(130, 145, 160, 0.35)",
-        eyeStroke: "rgba(180, 190, 200, 0.45)"
+        fill: "#1e293b",
+        stroke: "#475569",
+        eyeStroke: "#94a3b8"
     }
 ];
 
@@ -235,7 +237,7 @@ class Carcass {
         this.swayPhase = Math.random() * Math.PI * 2;
         this.state = "sinking"; // "sinking" | "settled" | "dead"
         this.groundTimer = 0;
-        this.groundLifetime = 14;
+        this.groundLifetime = 24; // 24s persistent floor carcass
         this.depthOffset = 0;
         this.time = 0;
         this.tier = 0; // 0: Fresh, 1: Skeletal, 2: Settled Bone

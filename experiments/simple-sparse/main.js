@@ -145,7 +145,38 @@ function recordDeath(creature) {
     }
 }
 
-// 4. Edge Spawning Hierarchy with Size Stratification, Novelty Injection & Stagnation Temperature
+// Helper to roll creature size index (0..8) based on ecosystem prosperity & resource surplus
+function rollEcologicalSize(allowMedium, allowLarge) {
+    if (!allowMedium) {
+        // Lean/Starving State: 100% Small Juveniles (Indices 0, 1, 2)
+        const idx = Math.floor(Math.random() * 3);
+        return { sizeIndex: idx, tier: "small" };
+    }
+    if (!allowLarge) {
+        // Moderate State: 65% Small Juveniles, 35% Medium Adults
+        if (Math.random() < 0.65) {
+            const idx = Math.floor(Math.random() * 3);
+            return { sizeIndex: idx, tier: "small" };
+        } else {
+            const idx = 3 + Math.floor(Math.random() * 3);
+            return { sizeIndex: idx, tier: "medium" };
+        }
+    }
+    // Flourishing / Surplus State: 50% Small, 35% Medium, 15% Rare Titan Elders
+    const roll = Math.random();
+    if (roll < 0.50) {
+        const idx = Math.floor(Math.random() * 3);
+        return { sizeIndex: idx, tier: "small" };
+    } else if (roll < 0.85) {
+        const idx = 3 + Math.floor(Math.random() * 3);
+        return { sizeIndex: idx, tier: "medium" };
+    } else {
+        const idx = 6 + Math.floor(Math.random() * 3);
+        return { sizeIndex: idx, tier: "large" };
+    }
+}
+
+// 4. Edge Spawning Hierarchy with Ecological Size Stratification & Genetic Novelty Injection
 function spawnEdgeEntity(species) {
     const fromLeft = Math.random() < 0.5;
     const startX = fromLeft ? -25 : bounds.w + 25;
@@ -155,42 +186,60 @@ function spawnEdgeEntity(species) {
     const isNovelExplorer = Math.random() < 0.20;
 
     if (species === "TurnFish") {
-        const size = randRange(12, 22);
-        const tier = size < 15.5 ? "small" : (size < 19 ? "medium" : "large");
+        // Food abundance unlocks medium adults (>= 6) and large titans (>= 12)
+        const allowMedium = foods.length >= 6;
+        const allowLarge = foods.length >= 12;
+        const { sizeIndex, tier } = rollEcologicalSize(allowMedium, allowLarge);
+        const size = TURNFISH_SIZES[sizeIndex];
         const record = bestBrains.TurnFish[tier];
         const template = isNovelExplorer ? null : record.brain;
         turnFishes.push(new TurnFish(startX, startY, bounds, template, size, record.stagnation));
     } else if (species === "Crab") {
-        const size = randRange(11, 19);
-        const tier = size < 13.5 ? "small" : (size < 16.5 ? "medium" : "large");
+        // Deep seafloor sediment / carcasses unlock medium (>= 2) and Giant Titan Elder Crabs (>= 5 or 4+ carcasses)
+        const settledDebris = foods.filter(f => f.state === "settled").length + carcasses.filter(c => c.state === "settled").length;
+        const allowMedium = settledDebris >= 2;
+        const allowLarge = settledDebris >= 5 || carcasses.length >= 4;
+        const { sizeIndex, tier } = rollEcologicalSize(allowMedium, allowLarge);
+        const size = CRAB_SIZES[sizeIndex];
         const record = bestBrains.Crab[tier];
         const template = isNovelExplorer ? null : record.brain;
         crabs.push(new Crab(startX, bounds.h - 10, bounds, template, size, record.stagnation));
     } else if (species === "Jellyfish") {
-        const size = randRange(22, 58);
-        const tier = size < 32 ? "small" : (size < 46 ? "medium" : "large");
+        // Upper water column activity unlocks medium and large sanctuary bells
+        const allowMedium = predators.length >= 1 || turnFishes.length >= 8;
+        const allowLarge = predators.length >= 2 || jellies.length >= 4;
+        const { sizeIndex, tier } = rollEcologicalSize(allowMedium, allowLarge);
+        const size = JELLY_SIZES[sizeIndex];
         const topY = randRange(-20, 60);
         const record = bestBrains.Jellyfish[tier];
         const template = isNovelExplorer ? null : record.brain;
         jellies.push(new Jellyfish(startX, topY, bounds, template, size, record.stagnation));
     } else if (species === "Predator") {
-        const size = randRange(24, 68);
-        const tier = size < 36 ? "small" : (size < 52 ? "medium" : "large");
+        // Prey overpopulation and kill count attract large Apex Behemoths
+        const preyCount = turnFishes.length + crabs.length;
+        const allowMedium = preyCount >= 8;
+        const allowLarge = preyCount >= 14 && predatorKillCount >= 3;
+        const { sizeIndex, tier } = rollEcologicalSize(allowMedium, allowLarge);
+        const size = PREDATOR_SIZES[sizeIndex];
         const record = bestBrains.Predator[tier];
         const template = isNovelExplorer ? null : record.brain;
         predators.push(new PredatorFish(startX, startY, bounds, template, size, record.stagnation));
     } else if (species === "Eel") {
-        const size = randRange(20, 38);
-        const tier = size < 25 ? "small" : (size < 32 ? "medium" : "large");
+        // Carcass density unlocks medium (>= 2) and Giant Sinuous Eels (>= 4)
+        const allowMedium = carcasses.length >= 2;
+        const allowLarge = carcasses.length >= 4;
+        const { sizeIndex, tier } = rollEcologicalSize(allowMedium, allowLarge);
+        const size = EEL_SIZES[sizeIndex];
         const record = bestBrains.Eel[tier];
         const template = isNovelExplorer ? null : record.brain;
         eels.push(new RibbonEel(startX, startY, bounds, template, size, record.stagnation));
     }
 }
 
-// Initial Starter Population
+// Initial Starter Population (Small Juveniles)
 for (let i = 0; i < 16; i++) {
-    const size = randRange(12, 22);
+    const { sizeIndex } = rollEcologicalSize(false, false);
+    const size = TURNFISH_SIZES[sizeIndex];
     turnFishes.push(new TurnFish(randRange(50, bounds.w - 50), randRange(50, bounds.h - 100), bounds, null, size));
 }
 for (let i = 0; i < 8; i++) {
@@ -439,7 +488,19 @@ canvas.addEventListener("click", (e) => {
 
 // 6. Simulation Logic Step
 const logic = (dt) => {
-    const totalCreatures = turnFishes.length + crabs.length + jellies.length + predators.length + eels.length;
+    // Count living creatures and persistent carcasses per species
+    let fishCarcasses = 0, crabCarcasses = 0, predCarcasses = 0, jellyCarcasses = 0, eelCarcasses = 0;
+    for (let i = 0; i < carcasses.length; i++) {
+        const sp = carcasses[i].species;
+        if (sp === "TurnFish") fishCarcasses++;
+        else if (sp === "Crab") crabCarcasses++;
+        else if (sp === "Predator") predCarcasses++;
+        else if (sp === "Jellyfish") jellyCarcasses++;
+        else if (sp === "Eel") eelCarcasses++;
+    }
+
+    const livingCreatures = turnFishes.length + crabs.length + jellies.length + predators.length + eels.length;
+    const totalEntities = livingCreatures + carcasses.length;
 
     // A. Food Spawning
     foodSpawnTimer += dt;
@@ -448,34 +509,34 @@ const logic = (dt) => {
         foods.push(new Food(randRange(30, bounds.w - 30), 0, bounds));
     }
 
-    // B. Hierarchical Edge Spawning
+    // B. Hierarchical Edge Spawning (Dead fish carcasses occupy species cap slots until eaten/decomposed)
     creatureSpawnTimer += dt;
-    if (creatureSpawnTimer >= 0.75 && totalCreatures < CAPS.Global) {
+    if (creatureSpawnTimer >= 0.75 && totalEntities < CAPS.Global) {
         creatureSpawnTimer = 0;
 
         // Condition 1: TurnFish (Foundation)
-        if (turnFishes.length < CAPS.TurnFish) {
+        if ((turnFishes.length + fishCarcasses) < CAPS.TurnFish) {
             spawnEdgeEntity("TurnFish");
         }
 
         // Condition 2: Crabs (Unlock if detritus or carcasses on floor)
         const settledDebris = foods.filter(f => f.state === "settled").length + carcasses.filter(c => c.state === "settled").length;
-        if (settledDebris > 0 && crabs.length < CAPS.Crab) {
+        if (settledDebris > 0 && (crabs.length + crabCarcasses) < CAPS.Crab) {
             spawnEdgeEntity("Crab");
         }
 
         // Condition 3: Predators (Unlock when prey population is thriving)
-        if (turnFishes.length >= 4 && crabs.length >= 1 && predators.length < CAPS.Predator) {
+        if (turnFishes.length >= 4 && crabs.length >= 1 && (predators.length + predCarcasses) < CAPS.Predator) {
             spawnEdgeEntity("Predator");
         }
 
         // Condition 4: Jellyfish (Unlock after Predator makes a kill)
-        if (predatorKillCount >= 1 && jellies.length < CAPS.Jellyfish) {
+        if (predatorKillCount >= 1 && (jellies.length + jellyCarcasses) < CAPS.Jellyfish) {
             spawnEdgeEntity("Jellyfish");
         }
 
         // Condition 5: Ribbon Eels (Unlock whenever carcasses appear in the tank)
-        if (carcasses.length > 0 && eels.length < CAPS.Eel) {
+        if (carcasses.length > 0 && (eels.length + eelCarcasses) < CAPS.Eel) {
             spawnEdgeEntity("Eel");
         }
     }
@@ -629,7 +690,7 @@ const logic = (dt) => {
     hudUpdateTimer += dt;
     if (hudUpdateTimer >= 0.16) {
         hudUpdateTimer = 0;
-        if (domHUD.popTotal) domHUD.popTotal.textContent = `${totalCreatures}/${CAPS.Global}`;
+        if (domHUD.popTotal) domHUD.popTotal.textContent = carcasses.length > 0 ? `${livingCreatures} (${carcasses.length}💀)/${CAPS.Global}` : `${livingCreatures}/${CAPS.Global}`;
         if (domHUD.cntFish) domHUD.cntFish.textContent = turnFishes.length;
         if (domHUD.cntCrabs) domHUD.cntCrabs.textContent = crabs.length;
         if (domHUD.cntJellies) domHUD.cntJellies.textContent = jellies.length;
@@ -670,10 +731,10 @@ const render = (_, cw, ch) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Subtle Sandy Seafloor Line
-    ctx.fillStyle = "rgba(180, 150, 90, 0.15)";
+    // Sandy Seafloor Line (100% Solid Opaque Colors)
+    ctx.fillStyle = "#1e293b";
     ctx.fillRect(0, bounds.h - 10, bounds.w, 10);
-    ctx.strokeStyle = "rgba(210, 180, 120, 0.25)";
+    ctx.strokeStyle = "#334155";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, bounds.h - 10);
@@ -700,6 +761,35 @@ const render = (_, cw, ch) => {
 
     // Layer 7: Predator Fish (Apex hunters in foreground)
     for (const p of predators) p.draw(ctx);
+
+    // Layer 8: Foreground Inspection Caret (Live Brain Target Indicator)
+    if (visualizer.isOpen && visualizer.providers && visualizer.providers.length > 0) {
+        const p = visualizer.providers[0];
+        if (p && !p.isReplay && p.entity && !p.entity.dead) {
+            const ent = p.entity;
+            const bob = Math.sin(performance.now() * 0.008) * 3;
+            const targetY = ent.y - (ent.radius || ent.size * 0.5 || 12) - 12 + bob;
+            const targetX = ent.x;
+
+            // Outer White Triangle (Pointing down at creature)
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.moveTo(targetX, targetY + 8);
+            ctx.lineTo(targetX - 7, targetY - 4);
+            ctx.lineTo(targetX + 7, targetY - 4);
+            ctx.closePath();
+            ctx.fill();
+
+            // Inner Black Triangle (Contrasting nested core)
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.moveTo(targetX, targetY + 5.5);
+            ctx.lineTo(targetX - 4.2, targetY - 2.8);
+            ctx.lineTo(targetX + 4.2, targetY - 2.8);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
 
     const drawDur = performance.now() - tDrawStart;
     perfStats.drawTime = perfStats.drawTime * 0.8 + drawDur * 0.2;
