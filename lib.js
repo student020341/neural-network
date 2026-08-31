@@ -21,6 +21,8 @@ const getWorldBounds = () => {
 };
 
 let currentScale = 1;
+let currentScaleX = 1;
+let currentScaleY = 1;
 let currentOffsetX = 0;
 let currentOffsetY = 0;
 
@@ -43,6 +45,8 @@ const applyTransform = () => {
         // Stretch to fill screen
         const scaleX = (cw * dpr) / targetW;
         const scaleY = (ch * dpr) / targetH;
+        currentScaleX = scaleX;
+        currentScaleY = scaleY;
         currentScale = Math.min(scaleX, scaleY);
         currentOffsetX = 0;
         currentOffsetY = 0;
@@ -50,6 +54,8 @@ const applyTransform = () => {
     } else {
         // Uniform fit: preserves square aspect ratio, centered
         const scale = Math.min((cw * dpr) / targetW, (ch * dpr) / targetH);
+        currentScaleX = scale;
+        currentScaleY = scale;
         currentScale = scale;
         currentOffsetX = ((cw * dpr) - targetW * scale) / 2;
         currentOffsetY = ((ch * dpr) - targetH * scale) / 2;
@@ -65,12 +71,11 @@ const applyTransform = () => {
  */
 const screenToWorld = (clientX, clientY) => {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const px = (clientX - rect.left) * dpr;
-    const py = (clientY - rect.top) * dpr;
+    const px = rect.width > 0 ? (clientX - rect.left) * (canvas.width / rect.width) : (clientX - rect.left);
+    const py = rect.height > 0 ? (clientY - rect.top) * (canvas.height / rect.height) : (clientY - rect.top);
     return {
-        x: (px - currentOffsetX) / currentScale,
-        y: (py - currentOffsetY) / currentScale
+        x: (px - currentOffsetX) / currentScaleX,
+        y: (py - currentOffsetY) / currentScaleY
     };
 };
 

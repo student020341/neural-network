@@ -388,19 +388,6 @@ class Crab {
         const wantsMunch = munch > 0.6;
         const wantsPincer = pincer > 0.5;
 
-        // Build up or dissipate muscle strain
-        if (wantsPincer) {
-            this.muscleStrain += 0.45 * dt;
-        }
-        if (wantsMunch) {
-            this.muscleStrain += 0.25 * dt;
-        }
-        if (!wantsMunch && !wantsPincer) {
-            this.muscleStrain = Math.max(0, this.muscleStrain - 0.35 * dt);
-        }
-
-        this.muscleStrain = clamp(this.muscleStrain, 0, 1);
-
         // Check strain lockout threshold
         if (this.muscleStrain >= 1.0) {
             this.isStrained = true;
@@ -411,6 +398,19 @@ class Crab {
         // Apply action state based on lockout
         this.mouthOpen = !this.isStrained && wantsMunch;
         this.pincerActive = !this.isStrained && wantsPincer;
+
+        // Build up or dissipate muscle strain based on actual physical exertion
+        if (this.pincerActive) {
+            this.muscleStrain += 0.45 * dt;
+        }
+        if (this.mouthOpen) {
+            this.muscleStrain += 0.25 * dt;
+        }
+        if (!this.pincerActive && !this.mouthOpen) {
+            this.muscleStrain = Math.max(0, this.muscleStrain - 0.35 * dt);
+        }
+
+        this.muscleStrain = clamp(this.muscleStrain, 0, 1);
 
         // --- Approximate Interleaved Interaction Physics (30 Hz Sub-rate) ---
         this.frameTick = (this.frameTick || 0) + 1;

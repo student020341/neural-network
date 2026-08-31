@@ -29,9 +29,9 @@ visualizer.track("Flower", flower, (fl) => fl.brain);
 
 // Click creature on canvas to inspect solely, or double click to restore all 3
 canvas.addEventListener("click", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    const mouseWorld = screenToWorld(e.clientX, e.clientY);
+    const clickX = mouseWorld.x;
+    const clickY = mouseWorld.y;
 
     if (Math.hypot(clickX - fish.x, clickY - fish.y) < 60) {
         visualizer.inspect("Fish", fish, (f) => f.brain);
